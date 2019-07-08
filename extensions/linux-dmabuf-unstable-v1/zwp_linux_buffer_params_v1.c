@@ -49,14 +49,8 @@ uint32_t modifier_lo) {
 	free(buffer);*/
 }
 
-static void create(struct wl_client *client, struct wl_resource *resource,
-int32_t width, int32_t height, uint32_t format, uint32_t flags) {
-
-}
-
-static void create_immed(struct wl_client *client, struct wl_resource *resource,
-uint32_t buffer_id, int32_t width, int32_t height, uint32_t format, uint32_t
-flags) {
+void create_(struct wl_client *client, struct wl_resource *resource, uint32_t
+buffer_id, int32_t width, int32_t height, uint32_t format, uint32_t flags) {
 	struct zwp_linux_buffer_params_v1_data* params =
 	wl_resource_get_user_data(resource);
 	struct wl_resource *child = wl_resource_create(client,
@@ -72,6 +66,20 @@ flags) {
 	dmabuf->offset = params->offset;
 	dmabuf->stride = params->stride;
 	dmabuf->modifier = params->modifier;
+
+	if (buffer_id == 0) // `create` request
+		zwp_linux_buffer_params_v1_send_created(resource, child);
+}
+
+static void create(struct wl_client *client, struct wl_resource *resource,
+int32_t width, int32_t height, uint32_t format, uint32_t flags) {
+	create_(client, resource, 0, width, height, format, flags);
+}
+
+static void create_immed(struct wl_client *client, struct wl_resource *resource,
+uint32_t buffer_id, int32_t width, int32_t height, uint32_t format, uint32_t
+flags) {
+	create_(client, resource, buffer_id, width, height, format, flags);
 }
 
 static const struct zwp_linux_buffer_params_v1_interface impl = {destroy,

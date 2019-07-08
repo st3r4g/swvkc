@@ -13,5 +13,5 @@ memory
 `vkBindBufferMemory(VkBuffer, VkDeviceMemory)`
 
 ## TODO
-* Implement `create` request in the dmabuf Wayland interface
+* ~~Implement `create` request in the dmabuf Wayland interface~~
 * Visualize `weston-simple-dmabuf-drm` buffers
