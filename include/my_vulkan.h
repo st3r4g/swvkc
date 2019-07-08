@@ -1,0 +1,1 @@
+int vulkan_main();

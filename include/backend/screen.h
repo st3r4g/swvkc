@@ -1,0 +1,26 @@
+#ifndef MYSCREEN_H
+#define MYSCREEN_H
+
+#include <util/box.h>
+
+struct screen;
+
+/*
+ * The screen interface represents a physical screen where the rendering done by
+ * the Wayland compositor is presented.
+ */
+
+struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
+unsigned int, void*), void *user_data);
+
+void drm_handle_event(int fd);
+
+int screen_get_gpu_fd(struct screen *);
+struct gbm_device *screen_get_gbm_device(struct screen *);
+struct box screen_get_dimensions(struct screen *S);
+void screen_post_direct(struct screen *, uint32_t width, uint32_t height,
+uint32_t format, int fd, int stride, int offset, uint64_t modifier);
+
+void screen_release(struct screen *);
+
+#endif
