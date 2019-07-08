@@ -1,8 +1,15 @@
 # swvkc (temporary name)
-swvkc is an attempt to write a simple Wayland compositor. Rendering is done via
-Vulkan and input is acquired directly from the kernel. It is still very WIP and
-should not be used until the implementation of the most important Wayland
-interfaces is completed.
+`swvkc` is an experimental Wayland compositor which aims to be minimalistic but
+efficient. Compositing is done by importing the clients video buffers into
+Vulkan and copying them onto the screen buffer.
+
+# Current status
+WARNING! The software is extremely early stage.
+* `weston-simple-dmabuf-drm` buffer successfully presented to the screen (which
+  is still a VkSwapchain buffer, one of the next steps would be to see if it's
+  possible to use a 'simple' buffer instead, manually feeding it to GBM/DRM).
+
+# General description
 
 ## Constraints
 * The hardware is required to support the modern DRM atomic commit interface
@@ -11,10 +18,10 @@ interfaces is completed.
 ## Usage notes
 * Only start the program in a virtual terminal (not inside another X11/Wayland
 compositor)
+* Pass the client you want to run as an argument
 * Press F1 to exit
-* Press F2 to cycle between clients
+* ~~Press F2 to cycle between clients~~ (not yet)
 * Keyboard settings are set through XKB_DEFAULT\* environmental variables.
-* Pass the client you want to run as an argument (usually a terminal emulator)
 
 ## Building
 After installing `meson`, run the command:

@@ -14,4 +14,4 @@ memory
 
 ## TODO
 * ~~Implement `create` request in the dmabuf Wayland interface~~
-* Visualize `weston-simple-dmabuf-drm` buffers
+* ~~Visualize `weston-simple-dmabuf-drm` buffers~~

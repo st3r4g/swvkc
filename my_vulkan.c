@@ -9,8 +9,11 @@ VkInstance create_instance() {
 		VK_KHR_SURFACE_EXTENSION_NAME,
 		VK_KHR_DISPLAY_EXTENSION_NAME,
 	};
+	const char *layers[] = {"VK_LAYER_LUNARG_standard_validation"};
 	VkInstanceCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.enabledLayerCount = sizeof(layers)/sizeof(char*),
+		.ppEnabledLayerNames = layers,
 		.enabledExtensionCount = sizeof(extensions)/sizeof(char*),
 		.ppEnabledExtensionNames = extensions
 	};
@@ -68,7 +71,8 @@ VkBuffer create_buffer(VkDevice dev) {
 	VkBufferCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.pNext = &info_next,
-		// TODO
+		.size = 262144,
+		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
 	};
 	VkBuffer buf;
 	if (vkCreateBuffer(dev, &info, NULL, &buf)) {
@@ -87,8 +91,8 @@ VkDeviceMemory import_memory(int fd, VkDevice dev) {
 	};
 	VkMemoryAllocateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.pNext = &info_next
-		// TODO
+		.pNext = &info_next,
+		.allocationSize = 262144
 	};
 	VkDeviceMemory mem;
 	if (vkAllocateMemory(dev, &info, NULL, &mem)) {
@@ -195,6 +199,44 @@ VkCommandBuffer record_command_clear(VkDevice dev, VkCommandPool pool, VkImage i
 	return cmdbuf;
 }
 
+VkCommandBuffer record_command_copy(VkDevice dev, VkCommandPool pool, VkBuffer
+buf, VkImage img) {
+	VkCommandBufferAllocateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = 1
+	};
+	VkCommandBuffer cmdbuf;
+	vkAllocateCommandBuffers(dev, &info, &cmdbuf);
+
+	VkCommandBufferBeginInfo infoBegin = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
+	};
+	vkBeginCommandBuffer(cmdbuf, &infoBegin);
+
+	VkImageSubresourceLayers imageSubresource = {
+		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.mipLevel = 0,
+		.baseArrayLayer = 0,
+		.layerCount = 1
+	};
+
+	VkBufferImageCopy region = {
+		.bufferOffset = 0,
+		.bufferRowLength = 0,
+		.bufferImageHeight = 0,
+		.imageSubresource = imageSubresource,
+		.imageOffset = {0,0,0},
+		.imageExtent = {256,256,0},
+	};
+	vkCmdCopyBufferToImage(cmdbuf, buf, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+	vkEndCommandBuffer(cmdbuf);
+	return cmdbuf;
+}
+
 int vulkan_main() {
 	VkInstance instance = create_instance();
 	if (instance == VK_NULL_HANDLE)
@@ -227,15 +269,27 @@ int vulkan_main() {
 	if (command_pool == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
 
-	VkCommandBuffer cmd_clear = record_command_clear(device, command_pool, image);
+	VkCommandBuffer commands[2] = {0};
+	commands[0] = record_command_clear(device, command_pool, image);
+
+	/*
+	 * Trying to post the dmabuf
+	 */
+
+	VkBuffer buffer = create_buffer(device);
+	VkDeviceMemory memory = import_memory(12, device); //TODO: properly get the fd
+	bind_buffer_memory(device, buffer, memory);
+	commands[1] = record_command_copy(device, command_pool, buffer, image);
+
+	// END
 
 	uint32_t index;
 	vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &index);
 
 	VkSubmitInfo submitInfo = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-		.commandBufferCount = 1,
-		.pCommandBuffers = &cmd_clear
+		.commandBufferCount = 2,
+		.pCommandBuffers = commands
 	};
 	vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
 
@@ -249,7 +303,7 @@ int vulkan_main() {
 
 	sleep(1);
 
-	vkFreeCommandBuffers(device, command_pool, 1, &cmd_clear);
+	vkFreeCommandBuffers(device, command_pool, 2, commands);
 
 	vkDestroyCommandPool(device, command_pool, NULL);
 	vkDestroySwapchainKHR(device, swapchain, NULL);
