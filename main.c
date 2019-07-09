@@ -26,7 +26,7 @@
 #include <extensions/xdg_shell/xdg_surface.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
 
-#include <my_vulkan.h>
+#include <backend/vulkan.h>
 
 struct server {
 	struct wl_display *display;
@@ -265,9 +265,9 @@ int main(int argc, char *argv[]) {
 /*	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
 	zwp_fullscreen_shell_v1_bind);*/
 
-//	server->screen = screen_setup(vblank_notify, server); TODO
-//	if (!server->screen)
-//		return EXIT_FAILURE;
+	server->screen = screen_setup(vblank_notify, server);
+	if (!server->screen)
+		return EXIT_FAILURE;
 	server->input = input_setup();
 	if (!server->input)
 		return EXIT_FAILURE;
@@ -290,13 +290,19 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	vulkan_init(screen_get_bo_fd(server->screen));
+	vulkan_main(0);
+	screen_post(server->screen);
+
 	wl_display_run(D);
 
-	vulkan_main();
+	vulkan_main(1);
+	screen_post(server->screen);
+	sleep(1);
 
 	wl_display_destroy(D);
 	input_release(server->input);
-//	screen_release(server->screen); TODO
+	screen_release(server->screen);
 	free(server);
 	return 0;
 }

@@ -8,6 +8,7 @@ VkInstance create_instance() {
 	const char *extensions[] = {
 		VK_KHR_SURFACE_EXTENSION_NAME,
 		VK_KHR_DISPLAY_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
 	};
 	const char *layers[] = {"VK_LAYER_LUNARG_standard_validation"};
 	VkInstanceCreateInfo info = {
@@ -39,6 +40,7 @@ VkPhysicalDevice get_physical_device(VkInstance inst) {
 VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev) {
 	const char *extensions[] = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
 		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
 	};
@@ -63,7 +65,7 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev) {
 	return dev;
 }
 
-VkBuffer create_buffer(VkDevice dev) {
+VkBuffer create_buffer(int size, VkDevice dev) {
 	VkExternalMemoryBufferCreateInfo info_next = {
 		.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
 		.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
@@ -71,7 +73,7 @@ VkBuffer create_buffer(VkDevice dev) {
 	VkBufferCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.pNext = &info_next,
-		.size = 262144,
+		.size = size, // stride * height
 		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
 	};
 	VkBuffer buf;
@@ -82,7 +84,7 @@ VkBuffer create_buffer(VkDevice dev) {
 	return buf;
 }
 
-VkDeviceMemory import_memory(int fd, VkDevice dev) {
+VkDeviceMemory import_memory(int fd, int size, VkDevice dev) {
 	VkImportMemoryFdInfoKHR info_next = {
 		.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
 		.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
@@ -92,7 +94,7 @@ VkDeviceMemory import_memory(int fd, VkDevice dev) {
 	VkMemoryAllocateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
 		.pNext = &info_next,
-		.allocationSize = 262144
+		.allocationSize = size// same as buffer size
 	};
 	VkDeviceMemory mem;
 	if (vkAllocateMemory(dev, &info, NULL, &mem)) {
@@ -199,6 +201,32 @@ VkCommandBuffer record_command_clear(VkDevice dev, VkCommandPool pool, VkImage i
 	return cmdbuf;
 }
 
+int32_t data[2] = {0xFF00FFFF, 0xFF0000FF};
+
+VkCommandBuffer record_command_clear2(VkDevice dev, VkCommandPool pool, VkBuffer buf) {
+	static int i=0;
+	VkCommandBufferAllocateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = 1
+	};
+	VkCommandBuffer cmdbuf;
+	vkAllocateCommandBuffers(dev, &info, &cmdbuf);
+
+	VkCommandBufferBeginInfo infoBegin = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
+	};
+	vkBeginCommandBuffer(cmdbuf, &infoBegin);
+
+	vkCmdFillBuffer(cmdbuf, buf, 0, VK_WHOLE_SIZE, data[i]);
+
+	vkEndCommandBuffer(cmdbuf);
+	i++;
+	return cmdbuf;
+}
+
 VkCommandBuffer record_command_copy(VkDevice dev, VkCommandPool pool, VkBuffer
 buf, VkImage img) {
 	VkCommandBufferAllocateInfo info = {
@@ -228,7 +256,7 @@ buf, VkImage img) {
 		.bufferRowLength = 0,
 		.bufferImageHeight = 0,
 		.imageSubresource = imageSubresource,
-		.imageOffset = {0,0,0},
+		.imageOffset = {200,100,0},
 		.imageExtent = {256,256,0},
 	};
 	vkCmdCopyBufferToImage(cmdbuf, buf, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
@@ -237,7 +265,35 @@ buf, VkImage img) {
 	return cmdbuf;
 }
 
-int vulkan_main() {
+VkCommandBuffer record_command_copy2(VkDevice dev, VkCommandPool pool, VkBuffer
+buf, VkBuffer buf2) {
+	VkCommandBufferAllocateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = 1
+	};
+	VkCommandBuffer cmdbuf;
+	vkAllocateCommandBuffers(dev, &info, &cmdbuf);
+
+	VkCommandBufferBeginInfo infoBegin = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
+	};
+	vkBeginCommandBuffer(cmdbuf, &infoBegin);
+
+	VkBufferCopy region = {
+		.srcOffset = 0,
+		.dstOffset = 0,
+		.size = 262144,
+	};
+	vkCmdCopyBuffer(cmdbuf, buf, buf2, 1, &region);
+
+	vkEndCommandBuffer(cmdbuf);
+	return cmdbuf;
+}
+
+int vulkan_main(int fd) {
 	VkInstance instance = create_instance();
 	if (instance == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
@@ -246,68 +302,69 @@ int vulkan_main() {
 	if (physical_device == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
 
-	VkSurfaceKHR surface = create_surface(instance, physical_device);
+/*	VkSurfaceKHR surface = create_surface(instance, physical_device);
 	if (surface == VK_NULL_HANDLE)
-		return EXIT_FAILURE;
+		return EXIT_FAILURE;*/
 
 	VkDevice device = create_device(instance, physical_device);
 	if (device == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
 
-	VkSwapchainKHR swapchain = create_swapchain(physical_device, device, surface);
+/*	VkSwapchainKHR swapchain = create_swapchain(physical_device, device, surface);
 	if (swapchain == VK_NULL_HANDLE)
-		return EXIT_FAILURE;
+		return EXIT_FAILURE;*/
 
 	VkQueue queue;
 	vkGetDeviceQueue(device, 0, 0, &queue);
 
-	uint32_t n = 1;
+/*	uint32_t n = 1;
 	VkImage image;
-	vkGetSwapchainImagesKHR(device, swapchain, &n, &image);
+	vkGetSwapchainImagesKHR(device, swapchain, &n, &image);*/
 
 	VkCommandPool command_pool = create_command_pool(device);
 	if (command_pool == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
 
 	VkCommandBuffer commands[2] = {0};
-	commands[0] = record_command_clear(device, command_pool, image);
+//	commands[0] = record_command_clear(device, command_pool, image);
 
 	/*
 	 * Trying to post the dmabuf
 	 */
 
-	VkBuffer buffer = create_buffer(device);
-	VkDeviceMemory memory = import_memory(12, device); //TODO: properly get the fd
-	bind_buffer_memory(device, buffer, memory);
-	commands[1] = record_command_copy(device, command_pool, buffer, image);
+/*	VkBuffer buffer = create_buffer(262144, device);
+	VkDeviceMemory memory = import_memory(13, 262144, device); //TODO: properly get the fd
+	bind_buffer_memory(device, buffer, memory);*/
+	VkBuffer screen_buffer = create_buffer(4325376, device);
+	VkDeviceMemory screen_memory = import_memory(fd, 4325376, device);
+	bind_buffer_memory(device, screen_buffer, screen_memory);
+	commands[0] = record_command_clear2(device, command_pool, screen_buffer);
 
 	// END
 
-	uint32_t index;
-	vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &index);
+/*	uint32_t index;
+	vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &index);*/
 
 	VkSubmitInfo submitInfo = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-		.commandBufferCount = 2,
+		.commandBufferCount = 1,
 		.pCommandBuffers = commands
 	};
 	vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
 
-	VkPresentInfoKHR presentInfo = {
+/*	VkPresentInfoKHR presentInfo = {
 		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.swapchainCount = 1,
 		.pSwapchains = &swapchain,
 		.pImageIndices = &index
 	};
-	vkQueuePresentKHR(queue, &presentInfo);
+	vkQueuePresentKHR(queue, &presentInfo);*/
 
-	sleep(1);
-
-	vkFreeCommandBuffers(device, command_pool, 2, commands);
+	vkFreeCommandBuffers(device, command_pool, 1, commands);
 
 	vkDestroyCommandPool(device, command_pool, NULL);
-	vkDestroySwapchainKHR(device, swapchain, NULL);
-	vkDestroySurfaceKHR(instance, surface, NULL);
+/*	vkDestroySwapchainKHR(device, swapchain, NULL);
+	vkDestroySurfaceKHR(instance, surface, NULL);*/
 	vkDestroyDevice(device, NULL);
 	vkDestroyInstance(instance, NULL);
 

@@ -10,7 +10,7 @@ p = 'protocols/'
 u = 'util/'
 x = 'extensions/'
 
-src = [b+'input.c', b+'screen.c']
+src = [b+'input.c', b+'screen.c', b+'vulkan.c']
 src += [c+'compositor.c', c+'data_device_manager.c', c+'keyboard.c',
 	c+'output.c', c+'wl_pointer.c', c+'region.c', c+'seat.c',
 	c+'wl_subcompositor.c', c+'wl_subsurface.c', c+'wl_surface.c']
@@ -23,7 +23,7 @@ src += [x+'xdg_shell/xdg_wm_base.c',
 	x+'linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.c',
 	x+'linux-dmabuf-unstable-v1/zwp_linux_buffer_params_v1.c',
 	x+'linux-dmabuf-unstable-v1/wl_buffer_dmabuf.c']
-src += ['legacy_wl_drm.c', 'my_vulkan.c', 'main.c']
+src += ['legacy_wl_drm.c', 'main.c']
 
 inc = include_directories('include')
 

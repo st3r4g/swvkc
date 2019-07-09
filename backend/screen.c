@@ -204,14 +204,21 @@ int gbm_setup(struct screen *S) {
 	S->gbm_device = gbm_create_device(S->gpu_fd);
 	if (!S->gbm_device) {
 		fprintf(stderr, "gbm_create_device failed\n");
-		return 0;
+		return 1;
 	}
 
 	int ret = gbm_device_is_format_supported(S->gbm_device,
-	GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+	GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
 	if (!ret) {
 		fprintf(stderr, "format unsupported\n");
-		return 0;
+		return 1;
+	}
+
+	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
+	S->gbm_bo = gbm_bo_create(S->gbm_device, 1366, 768, GBM_BO_FORMAT_XRGB8888, flags);
+	if (!S->gbm_bo) {
+		fprintf(stderr, "gbm_bo_create failed\n");
+		return 1;
 	}
 
 	return 0;
@@ -337,8 +344,60 @@ uint32_t format, int fd, int stride, int offset, uint64_t modifier) {
 	i = !i;
 }
 
+void screen_post(struct screen *S) {
+	drmModeAtomicReq *req = drmModeAtomicAlloc();
+	struct gbm_bo *bo = S->gbm_bo;
+	uint32_t bo_width = gbm_bo_get_width(bo);
+	uint32_t bo_height = gbm_bo_get_height(bo);
+
+	uint32_t bo_handles[4] = {0};
+	uint32_t bo_strides[4] = {0};
+	uint32_t bo_offsets[4] = {0};
+	uint64_t bo_modifiers[4] = {0};
+	for (int j = 0; j < gbm_bo_get_plane_count(bo); j++) {
+		bo_handles[j] = gbm_bo_get_handle_for_plane(bo, j).u32;
+		bo_strides[j] = gbm_bo_get_stride_for_plane(bo, j);
+		bo_offsets[j] = gbm_bo_get_offset(bo, j);
+		// KMS requires all BO planes to have the same modifier
+		bo_modifiers[j] = gbm_bo_get_modifier(bo);
+		errlog("%d", bo_handles[j]);
+		errlog("%d", bo_strides[j]);
+		errlog("%d", bo_offsets[j]);
+		errlog("ciccioc %d", bo_modifiers[j] == I915_FORMAT_MOD_X_TILED);
+	}
+
+//	uint32_t handle = gbm_bo_get_handle(bo).u32;
+	uint32_t bo_format = gbm_bo_get_format(bo);
+		errlog("%d %d %d", bo_format, DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888);
+
+/*	if (drmModeAddFB2WithModifiers(S->gpu_fd, width, height, COLOR_DEPTH, BIT_PER_PIXEL,
+	stride, handle, &S->fb_id[i])) {*/
+	uint32_t fb_id;
+	if (drmModeAddFB2WithModifiers(S->gpu_fd, bo_width, bo_height, bo_format,
+	bo_handles, bo_strides, bo_offsets, bo_modifiers, &fb_id, DRM_MODE_FB_MODIFIERS)) {
+		perror("AddFB");
+	}
+
+	if (drmModeAtomicAddProperty(req, S->plane_id,
+	S->props_plane_fb_id, fb_id) < 0)
+		fprintf(stderr, "atomic add property failed\n");
+	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_PAGE_FLIP_EVENT |
+	DRM_MODE_ATOMIC_NONBLOCK, S))
+	perror("atomic commit failed");
+	else {
+	fprintf(stderr, "atomic commit success\n");
+/*	if (fb_id)
+	drmModeRmFB(S->gpu_fd, fb_id);*/
+	}
+	drmModeAtomicFree(req);
+}
+
 int screen_get_gpu_fd(struct screen *S) {
 	return S->gpu_fd;
+}
+
+int screen_get_bo_fd(struct screen *S) {
+	return gbm_bo_get_fd(S->gbm_bo);
 }
 
 struct gbm_device *screen_get_gbm_device(struct screen *S) {
