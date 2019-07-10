@@ -65,25 +65,40 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev) {
 	return dev;
 }
 
-VkBuffer create_buffer(int size, VkDevice dev) {
-	VkExternalMemoryBufferCreateInfo info_next = {
-		.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
+VkImage create_image(int32_t width, int32_t height, VkDevice dev) {
+	VkExternalMemoryImageCreateInfo info_next = {
+		.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
 		.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
 	};
-	VkBufferCreateInfo info = {
-		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+	// I must convert from DRM to Vk formats
+	// I must choose the correct tiling
+	// I must choose the correct src/dst
+	VkImageCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.pNext = &info_next,
-		.size = size, // stride * height
-		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+		.flags = 0,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = VK_FORMAT_B8G8R8A8_UNORM, // TODO
+		.extent = {width, height, 1},
+		.mipLevels = 1,
+		.arrayLayers = 1,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = VK_IMAGE_TILING_LINEAR, // TODO
+		.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT, // or SRC
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+//		.queueFamilyIndexCount = 0, ignored
+//		.pQueueFamilyIndices = 0, ignored
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
 	};
-	VkBuffer buf;
-	if (vkCreateBuffer(dev, &info, NULL, &buf)) {
-		fprintf(stderr, "ERROR: create_buffer() failed.\n");
+	VkImage img;
+	if (vkCreateImage(dev, &info, NULL, &img)) {
+		fprintf(stderr, "ERROR: create_image() failed.\n");
 		return VK_NULL_HANDLE;
 	}
-	return buf;
+	return img;
 }
 
+// Pass stride * height as size
 VkDeviceMemory import_memory(int fd, int size, VkDevice dev) {
 	VkImportMemoryFdInfoKHR info_next = {
 		.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
@@ -94,7 +109,7 @@ VkDeviceMemory import_memory(int fd, int size, VkDevice dev) {
 	VkMemoryAllocateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
 		.pNext = &info_next,
-		.allocationSize = size// same as buffer size
+		.allocationSize = size
 	};
 	VkDeviceMemory mem;
 	if (vkAllocateMemory(dev, &info, NULL, &mem)) {
@@ -104,8 +119,10 @@ VkDeviceMemory import_memory(int fd, int size, VkDevice dev) {
 	return mem;
 }
 
-VkResult bind_buffer_memory(VkDevice dev, VkBuffer buf, VkDeviceMemory mem) {
-	return vkBindBufferMemory(dev, buf, mem, 0);
+
+
+VkResult bind_image_memory(VkDevice dev, VkImage img, VkDeviceMemory mem) {
+	return vkBindImageMemory(dev, img, mem, 0);
 }
 
 VkSurfaceKHR create_surface(VkInstance inst, VkPhysicalDevice pdev) {
@@ -247,8 +264,8 @@ VkCommandBuffer record_command_clear3(VkDevice dev, VkCommandPool pool, VkBuffer
 	return cmdbuf;
 }
 
-VkCommandBuffer record_command_copy(VkDevice dev, VkCommandPool pool, VkBuffer
-buf, VkImage img) {
+VkCommandBuffer record_command_copy(VkDevice dev, VkCommandPool pool, VkImage
+img, VkImage img2) {
 	VkCommandBufferAllocateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 		.commandPool = pool,
@@ -271,15 +288,16 @@ buf, VkImage img) {
 		.layerCount = 1
 	};
 
-	VkBufferImageCopy region = {
-		.bufferOffset = 0,
-		.bufferRowLength = 0,
-		.bufferImageHeight = 0,
-		.imageSubresource = imageSubresource,
-		.imageOffset = {200,100,0},
-		.imageExtent = {256,256,0},
+	VkImageCopy region = {
+		.srcSubresource = imageSubresource,
+		.srcOffset = {0,0,0},
+		.dstSubresource = imageSubresource,
+		.dstOffset = {200,100,0},
+		.extent = {256,256,0},
 	};
-	vkCmdCopyBufferToImage(cmdbuf, buf, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+	vkCmdCopyImage(cmdbuf, img,
+	VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, img2,
+	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
 	vkEndCommandBuffer(cmdbuf);
 	return cmdbuf;
@@ -317,16 +335,18 @@ VkDevice device;
 VkQueue queue;
 VkCommandPool command_pool;
 VkCommandBuffer commands[2] = {0,0};
-VkBuffer screen_buffer;
+VkImage screen_image;
 
 int vulkan_init(int fd) {
 	VkInstance instance = create_instance();
 	if (instance == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
+	printf("Instance created\n");
 
 	VkPhysicalDevice physical_device = get_physical_device(instance);
 	if (physical_device == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
+	printf("physical device created\n");
 
 /*	VkSurfaceKHR surface = create_surface(instance, physical_device);
 	if (surface == VK_NULL_HANDLE)
@@ -356,10 +376,10 @@ int vulkan_init(int fd) {
 	 * Trying to post the dmabuf
 	 */
 
-	screen_buffer = create_buffer(4325376, device);
-	VkDeviceMemory screen_memory = import_memory(fd, 4325376, device);
-	bind_buffer_memory(device, screen_buffer, screen_memory);
-	commands[0] = record_command_clear2(device, command_pool, screen_buffer);
+	screen_image = create_image(1920, 1080, device);
+	VkDeviceMemory screen_memory = import_memory(fd, 8294400, device);
+	bind_image_memory(device, screen_image, screen_memory);
+	commands[0] = record_command_clear(device, command_pool, screen_image);
 	return EXIT_SUCCESS;
 }
 
@@ -370,11 +390,12 @@ int vulkan_main(int i) {
 	vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &index);*/
 
 	if (i == 1) {
-	VkBuffer buffer = create_buffer(262144, device);
+	VkImage image = create_image(256, 256, device);
 	VkDeviceMemory memory = import_memory(19, 262144, device); //TODO: properly get the fd
-	bind_buffer_memory(device, buffer, memory);
+	bind_image_memory(device, image, memory);
 
-		commands[1] = record_command_copy2(device, command_pool, buffer, screen_buffer);
+		commands[1] = record_command_copy(device, command_pool, image,
+		screen_image);
 	}
 
 	VkSubmitInfo submitInfo = {

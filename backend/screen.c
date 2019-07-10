@@ -208,14 +208,14 @@ int gbm_setup(struct screen *S) {
 	}
 
 	int ret = gbm_device_is_format_supported(S->gbm_device,
-	GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
+	GBM_BO_FORMAT_ARGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
 	if (!ret) {
 		fprintf(stderr, "format unsupported\n");
 		return 1;
 	}
 
-	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
-	S->gbm_bo = gbm_bo_create(S->gbm_device, 1366, 768, GBM_BO_FORMAT_XRGB8888, flags);
+	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR;
+	S->gbm_bo = gbm_bo_create(S->gbm_device, 1920, 1080, GBM_BO_FORMAT_ARGB8888, flags);
 	if (!S->gbm_bo) {
 		fprintf(stderr, "gbm_bo_create failed\n");
 		return 1;

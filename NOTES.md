@@ -7,11 +7,11 @@
 ## Steps to import a dma_buf into the Vulkan compositor
 1. Create a buffer, which is initially a virtual allocation with no backing
 memory
-`VkBuffer = vkCreateBuffer()`
+`VkImage = vkCreateImage()`
 2. Allocate device memory from the dma_buf fd
 `VkDeviceMemory = vkAllocateMemory(fd)`
 3. Associate the device memory with the buffer
-`vkBindBufferMemory(VkBuffer, VkDeviceMemory)`
+`vkBindImageMemory(VkImage, VkDeviceMemory)`
 
 ## Steps to import a shm buffer into the Vulkan compositor
 1. Same as above
@@ -26,13 +26,13 @@ memory
 `fd = gbm_bo_get_fd(bo)`
 3. Create a buffer, which is initially a virtual allocation with no backing
 memory
-`VkBuffer = vkCreateBuffer()`
+`VkImage = vkCreateImage()`
 4. Allocate device memory from the dma_buf fd
 `VkDeviceMemory = vkAllocateMemory(fd)`
 5. Associate the device memory with the buffer
-`vkBindBufferMemory(VkBuffer, VkDeviceMemory)`
+`vkBindImageMemory(VkImage, VkDeviceMemory)`
 6. Render to the buffer
-`vkCmdFillBuffer`
+`vkCmdClearColorImage`
 7. Retrieve the bo handle to feed it to DRM
 `handle = gbm_bo_get_handle(bo).u32`
 
