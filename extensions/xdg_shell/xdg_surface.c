@@ -11,6 +11,7 @@
 #include <extensions/linux-dmabuf-unstable-v1/wl_buffer_dmabuf.h>
 #include <util/log.h>
 #include <backend/screen.h>
+#include <backend/vulkan.h>
 #include <server.h>
 
 static enum wl_iterator_result keyboard_set(struct wl_resource *resource,
@@ -96,10 +97,15 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 			int offset = wl_buffer_dmabuf_get_offset(buffer);
 			uint64_t mod = wl_buffer_dmabuf_get_mod(buffer);
 errlog("%d %d %d %d %d %d %d", width, height, format, fd, stride, offset, mod);
+			// 1) TODO Copy window buffer to screen
+			// 2) schedule pageflip with new screen content
 			/*screen_post_direct(server_get_screen(surface->server),
 			width, height, format, fd, stride, offset, mod);*/
+			vulkan_main(1, fd, width, height, stride);
+			screen_post(server_get_screen(surface->server));
+			wl_buffer_send_release(buffer);
 			if (buf) {
-				wl_buffer_send_release(buf);
+//				wl_buffer_send_release(buf);
 			}
 			buf = buffer;
 		} else {

@@ -3,9 +3,34 @@
 #include <unistd.h>
 
 #include <vulkan/vulkan.h>
+#include <util/log.h>
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+VkDebugUtilsMessageTypeFlagsEXT messageType, const
+VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
+	fprintf(stderr, "validation layer: %s\n", pCallbackData->pMessage);
+	return VK_FALSE;
+}
+
 
 VkInstance create_instance() {
+	VkDebugUtilsMessengerCreateInfoEXT createInfo2 = {0};
+	createInfo2.sType =
+	VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	createInfo2.messageSeverity =
+	VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+	VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+	VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+	VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	createInfo2.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+	VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+	VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+	createInfo2.pfnUserCallback = debugCallback;
+
+
 	const char *extensions[] = {
+		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 		VK_KHR_SURFACE_EXTENSION_NAME,
 		VK_KHR_DISPLAY_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
@@ -13,6 +38,7 @@ VkInstance create_instance() {
 	const char *layers[] = {"VK_LAYER_LUNARG_standard_validation"};
 	VkInstanceCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.pNext = &createInfo2,
 		.enabledLayerCount = sizeof(layers)/sizeof(char*),
 		.ppEnabledLayerNames = layers,
 		.enabledExtensionCount = sizeof(extensions)/sizeof(char*),
@@ -23,6 +49,13 @@ VkInstance create_instance() {
 		fprintf(stderr, "ERROR: create_instance() failed.\n");
 		return VK_NULL_HANDLE;
 	}
+
+/*	PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessenger =
+	(PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(inst,
+	"vkCreateDebugUtilsMessengerEXT");
+	VkDebugUtilsMessengerEXT debugMessenger;
+	vkCreateDebugUtilsMessenger(inst, &createInfo2, 0, &debugMessenger);*/
+
 	return inst;
 }
 
@@ -112,8 +145,11 @@ VkDeviceMemory import_memory(int fd, int size, VkDevice dev) {
 		.allocationSize = size
 	};
 	VkDeviceMemory mem;
-	if (vkAllocateMemory(dev, &info, NULL, &mem)) {
-		fprintf(stderr, "ERROR: import_memory() failed.\n");
+	VkResult res = vkAllocateMemory(dev, &info, NULL, &mem);
+	if (res) {
+		fprintf(stderr, "ERROR: import_memory(%d, %d) failed. %d\n", fd,
+		size, res == VK_ERROR_INVALID_EXTERNAL_HANDLE);
+
 		return VK_NULL_HANDLE;
 	}
 	return mem;
@@ -293,7 +329,7 @@ img, VkImage img2) {
 		.srcOffset = {0,0,0},
 		.dstSubresource = imageSubresource,
 		.dstOffset = {200,100,0},
-		.extent = {256,256,0},
+		.extent = {1366,768,0},
 	};
 	vkCmdCopyImage(cmdbuf, img,
 	VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, img2,
@@ -336,6 +372,7 @@ VkQueue queue;
 VkCommandPool command_pool;
 VkCommandBuffer commands[2] = {0,0};
 VkImage screen_image;
+
 
 int vulkan_init(int fd) {
 	VkInstance instance = create_instance();
@@ -382,16 +419,17 @@ int vulkan_init(int fd) {
 	commands[0] = record_command_clear(device, command_pool, screen_image);
 	return EXIT_SUCCESS;
 }
-
-int vulkan_main(int i) {
+int vulkan_main(int i, int fd, int width, int height, int stride) {
+	fd = dup(fd); // otherwise I can't import the same fd again
 	// END
 
 /*	uint32_t index;
 	vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &index);*/
-
+VkImage image;
+VkDeviceMemory memory;
 	if (i == 1) {
-	VkImage image = create_image(256, 256, device);
-	VkDeviceMemory memory = import_memory(19, 262144, device); //TODO: properly get the fd
+	image = create_image(width, height, device);
+	memory = import_memory(fd, stride*height, device);
 	bind_image_memory(device, image, memory);
 
 		commands[1] = record_command_copy(device, command_pool, image,
@@ -403,7 +441,23 @@ int vulkan_main(int i) {
 		.commandBufferCount = 1,
 		.pCommandBuffers = commands+i
 	};
-	vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+	VkFence fence;
+	VkFenceCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
+		};
+	vkCreateFence(device, &info, NULL, &fence);
+	errlog("COPY START");
+	vkQueueSubmit(queue, 1, &submitInfo, fence);
+	vkWaitForFences(device, 1, &fence, VK_TRUE, 100000000);
+	errlog("COPY DONE");
+	vkResetFences(device, 1, &fence);
+
+	if (i == 1) {
+		vkDestroyImage(device, image, NULL);
+		vkFreeMemory(device, memory, NULL);
+		}
+
+	close(fd);
 
 
 /*	VkPresentInfoKHR presentInfo = {

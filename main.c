@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -42,6 +43,22 @@ struct server {
 };
 
 struct server *server;
+
+static void resource_created_notify(struct wl_listener *listener, void *data) {
+	struct wl_resource *resource = data;
+	const char *class = wl_resource_get_class(resource);
+	if (!strcmp(class, "xdg_surface"))
+		errlog("Created resource %s", class);
+}
+
+struct wl_listener resource_created = {.notify = resource_created_notify};
+
+static void client_created_notify(struct wl_listener *listener, void *data) {
+	struct wl_client *client = data;
+	wl_client_add_resource_created_listener(client, &resource_created);
+}
+
+struct wl_listener client_created = {.notify = client_created_notify};
 
 void server_window_create(struct server *server, struct xdg_surface0
 *xdg_surface) {
@@ -265,6 +282,8 @@ int main(int argc, char *argv[]) {
 /*	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
 	zwp_fullscreen_shell_v1_bind);*/
 
+	wl_display_add_client_created_listener(D, &client_created);
+
 	server->screen = screen_setup(vblank_notify, server);
 	if (!server->screen)
 		return EXIT_FAILURE;
@@ -272,11 +291,11 @@ int main(int argc, char *argv[]) {
 	if (!server->input)
 		return EXIT_FAILURE;
 	
-//	legacy_wl_drm_setup(D, screen_get_gbm_device(server->screen)); TODO
+	legacy_wl_drm_setup(D, screen_get_gbm_device(server->screen));
 
 	struct wl_event_loop *el = wl_display_get_event_loop(D);
-//	wl_event_loop_add_fd(el, screen_get_gpu_fd(server->screen), TODO
-//	WL_EVENT_READABLE, gpu_ev_handler, server);
+	wl_event_loop_add_fd(el, screen_get_gpu_fd(server->screen),
+	WL_EVENT_READABLE, gpu_ev_handler, server);
 	wl_event_loop_add_fd(el, input_get_key_fd(server->input),
 	WL_EVENT_READABLE, key_ev_handler, server);
 
@@ -291,14 +310,14 @@ int main(int argc, char *argv[]) {
 	}
 
 	vulkan_init(screen_get_bo_fd(server->screen));
-	vulkan_main(0);
+	vulkan_main(0, 0,0,0,0);
 	screen_post(server->screen);
 
 	wl_display_run(D);
 
-	vulkan_main(1);
+/*	vulkan_main(1);
 	screen_post(server->screen);
-	sleep(1);
+	sleep(1);*/
 
 	wl_display_destroy(D);
 	input_release(server->input);
