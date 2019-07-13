@@ -38,7 +38,7 @@ memory
 ## TODO
 * ~~Implement `create` request in the dmabuf Wayland interface~~
 * ~~Visualize `weston-simple-dmabuf-drm` buffers~~
-* Import shm buffers
+* ~~Import shm buffers~~
 
 ## ISSUES
 * Is VK_EXT_external_memory_host useful for us? The shm buffer from Alacritty

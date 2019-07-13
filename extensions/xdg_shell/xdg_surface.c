@@ -71,7 +71,35 @@ static const struct xdg_surface_interface impl = {
 	.ack_configure = ack_configure
 };
 
-static struct wl_resource *buf = 0;
+void dmabuf(struct wl_resource *buffer) {
+	uint32_t width = wl_buffer_dmabuf_get_width(buffer);
+	uint32_t height = wl_buffer_dmabuf_get_height(buffer);
+	uint32_t format = wl_buffer_dmabuf_get_format(buffer);
+	int fd = wl_buffer_dmabuf_get_fd(buffer);
+	int stride = wl_buffer_dmabuf_get_stride(buffer);
+	int offset = wl_buffer_dmabuf_get_offset(buffer);
+	uint64_t mod = wl_buffer_dmabuf_get_mod(buffer);
+errlog("%d %d %d %d %d %d %d", width, height, format, fd, stride, offset, mod);
+	// 1) TODO Copy window buffer to screen
+	// 2) schedule pageflip with new screen content
+	/*screen_post_direct(server_get_screen(surface->server),
+	width, height, format, fd, stride, offset, mod);*/
+	vulkan_main(1, fd, width, height, stride);
+}
+
+void shmbuf(struct wl_resource *buffer) {
+	struct wl_shm_buffer *shm_buffer = wl_shm_buffer_get(buffer);
+	uint32_t width = wl_shm_buffer_get_width(shm_buffer);
+	uint32_t height = wl_shm_buffer_get_height(shm_buffer);
+	uint32_t stride = wl_shm_buffer_get_stride(shm_buffer);
+	uint32_t format = wl_shm_buffer_get_format(shm_buffer);
+	uint8_t *data = wl_shm_buffer_get_data(shm_buffer);
+	errlog("BEGIN ACCESS");
+	wl_shm_buffer_begin_access(shm_buffer);
+	vulkan_render_shm_buffer(width, height, stride, format, data);
+	wl_shm_buffer_end_access(shm_buffer);
+	errlog("END ACCESS");
+}
 
 static void commit_notify(struct wl_listener *listener, void *data) {
 	struct xdg_surface0 *xdg_surface;
@@ -86,28 +114,16 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 	
 	struct surface *surface = data;
 		if (surface->current->buffer && surface->staged & (1 << 0)) {
-//			surface->texture = tex_from_buffer(surface->egl,
-//			current->buffer, &buf_w, &buf_h);
 			struct wl_resource *buffer = surface->current->buffer;
-			uint32_t width = wl_buffer_dmabuf_get_width(buffer);
-			uint32_t height = wl_buffer_dmabuf_get_height(buffer);
-			uint32_t format = wl_buffer_dmabuf_get_format(buffer);
-			int fd = wl_buffer_dmabuf_get_fd(buffer);
-			int stride = wl_buffer_dmabuf_get_stride(buffer);
-			int offset = wl_buffer_dmabuf_get_offset(buffer);
-			uint64_t mod = wl_buffer_dmabuf_get_mod(buffer);
-errlog("%d %d %d %d %d %d %d", width, height, format, fd, stride, offset, mod);
-			// 1) TODO Copy window buffer to screen
-			// 2) schedule pageflip with new screen content
-			/*screen_post_direct(server_get_screen(surface->server),
-			width, height, format, fd, stride, offset, mod);*/
-			vulkan_main(1, fd, width, height, stride);
-			screen_post(server_get_screen(surface->server));
+			if (wl_buffer_is_dmabuf(buffer))
+				dmabuf(buffer);
+			else
+				shmbuf(buffer);
+//			screen_post(server_get_screen(surface->server)); NOT
+//			NEEDED, screen refresh (scanout) happens automatically
+//			from the currently bound buffer. Will be needed for
+//			double buffering
 			wl_buffer_send_release(buffer);
-			if (buf) {
-//				wl_buffer_send_release(buf);
-			}
-			buf = buffer;
 		} else {
 //			surface->texture = 0, buf_w = 0, buf_h = 0;
 		}

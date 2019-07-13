@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <vulkan/vulkan.h>
@@ -13,6 +14,7 @@ VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
 	return VK_FALSE;
 }
 
+static PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerProperties = 0;
 
 VkInstance create_instance() {
 	VkDebugUtilsMessengerCreateInfoEXT createInfo2 = {0};
@@ -50,11 +52,14 @@ VkInstance create_instance() {
 		return VK_NULL_HANDLE;
 	}
 
-/*	PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessenger =
+	PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessenger =
 	(PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(inst,
 	"vkCreateDebugUtilsMessengerEXT");
 	VkDebugUtilsMessengerEXT debugMessenger;
-	vkCreateDebugUtilsMessenger(inst, &createInfo2, 0, &debugMessenger);*/
+	vkCreateDebugUtilsMessenger(inst, &createInfo2, 0, &debugMessenger);
+	vkGetMemoryHostPointerProperties =
+	(PFN_vkGetMemoryHostPointerPropertiesEXT) vkGetInstanceProcAddr(inst,
+	"vkGetMemoryHostPointerPropertiesEXT");
 
 	return inst;
 }
@@ -76,6 +81,7 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev) {
 		VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
 		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
+		VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME
 	};
 	float priority = 1.0f;
 	VkDeviceQueueCreateInfo infoQueue = {
@@ -155,7 +161,43 @@ VkDeviceMemory import_memory(int fd, int size, VkDevice dev) {
 	return mem;
 }
 
+VkDeviceMemory import_memory_from_shm(uint32_t size, uint8_t *data, VkDevice dev) {
+	VkMemoryHostPointerPropertiesEXT props = {.sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT};
+	if (vkGetMemoryHostPointerProperties(dev,
+	VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, data, &props)) {
+		fprintf(stderr, "ERROR: get_properties() failed.\n");
+		return VK_NULL_HANDLE;
+	}
 
+	errlog("BITMASK: %d\n", props.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	errlog("BITMASK: %d\n", props.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+	errlog("BITMASK: %d\n", props.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	errlog("BITMASK: %d\n", props.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+	errlog("BITMASK: %d\n", props.memoryTypeBits & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT);
+	errlog("BITMASK: %d\n", props.memoryTypeBits & VK_MEMORY_PROPERTY_PROTECTED_BIT);
+
+
+	VkImportMemoryHostPointerInfoEXT info_next = {
+		.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT,
+		.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
+// or maybe VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT
+		.pHostPointer = data
+	};
+	VkMemoryAllocateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.pNext = &info_next,
+		.allocationSize = size,
+		.memoryTypeIndex = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+	};
+	VkDeviceMemory mem;
+	VkResult res = vkAllocateMemory(dev, &info, NULL, &mem);
+	if (res) {
+		fprintf(stderr, "ERROR: import_memory_from_shm(%d, %p) failed, %d\n",
+		size, (void*)data, res == VK_ERROR_INVALID_EXTERNAL_HANDLE);
+		return VK_NULL_HANDLE;
+	}
+	return mem;
+}
 
 VkResult bind_image_memory(VkDevice dev, VkImage img, VkDeviceMemory mem) {
 	return vkBindImageMemory(dev, img, mem, 0);
@@ -329,7 +371,7 @@ img, VkImage img2) {
 		.srcOffset = {0,0,0},
 		.dstSubresource = imageSubresource,
 		.dstOffset = {200,100,0},
-		.extent = {1366,768,0},
+		.extent = {1366,768,1},
 	};
 	vkCmdCopyImage(cmdbuf, img,
 	VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, img2,
@@ -367,6 +409,48 @@ buf, VkBuffer buf2) {
 	return cmdbuf;
 }
 
+VkCommandBuffer record_command_copy3(VkDevice dev, VkCommandPool pool, VkBuffer
+buf, VkImage img2) {
+	VkCommandBufferAllocateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = 1
+	};
+	VkCommandBuffer cmdbuf;
+	vkAllocateCommandBuffers(dev, &info, &cmdbuf);
+
+	VkCommandBufferBeginInfo infoBegin = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
+	};
+	vkBeginCommandBuffer(cmdbuf, &infoBegin);
+
+	VkImageSubresourceLayers imageSubresource = {
+		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.mipLevel = 0,
+		.baseArrayLayer = 0,
+		.layerCount = 1
+	};
+
+	VkBufferImageCopy region = {
+		.bufferOffset = 0,
+		.bufferRowLength = 0,
+		.bufferImageHeight = 0,
+		.imageSubresource = imageSubresource,
+		.imageOffset = {200,100,0},
+		.imageExtent = {1366,768,1},
+	};
+	vkCmdCopyBufferToImage(cmdbuf, buf, img2,
+	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+	vkEndCommandBuffer(cmdbuf);
+	return cmdbuf;
+}
+
+
+
+VkPhysicalDevice physical_device;
 VkDevice device;
 VkQueue queue;
 VkCommandPool command_pool;
@@ -380,7 +464,7 @@ int vulkan_init(int fd) {
 		return EXIT_FAILURE;
 	printf("Instance created\n");
 
-	VkPhysicalDevice physical_device = get_physical_device(instance);
+	physical_device = get_physical_device(instance);
 	if (physical_device == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
 	printf("physical device created\n");
@@ -419,6 +503,90 @@ int vulkan_init(int fd) {
 	commands[0] = record_command_clear(device, command_pool, screen_image);
 	return EXIT_SUCCESS;
 }
+
+uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(physical_device, &memProperties);
+
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+            if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+                return i;
+            }
+        }
+
+	return 0;
+        // ERROR
+}
+
+VkBuffer create_buffer(uint32_t size, VkDeviceMemory *mem, VkDevice dev) {
+	VkBufferCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = size,
+		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE
+	};
+	VkBuffer buf;
+	if (vkCreateBuffer(dev, &info, NULL, &buf)) {
+		fprintf(stderr, "ERROR: create_buffer() failed.\n");
+		return VK_NULL_HANDLE;
+	}
+
+	VkMemoryRequirements memreq;
+	vkGetBufferMemoryRequirements(dev, buf, &memreq);
+
+	VkMemoryAllocateInfo info2 = {
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = memreq.size,
+		.memoryTypeIndex =
+		findMemoryType(memreq.memoryTypeBits,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+	};
+	VkResult res = vkAllocateMemory(dev, &info2, NULL, mem);
+	if (res) {
+		fprintf(stderr, "ERROR: import_memory failed.\n");
+		return VK_NULL_HANDLE;
+	}
+
+	vkBindBufferMemory(dev, buf, *mem, 0);
+
+	return buf;
+}
+
+void vulkan_render_shm_buffer(uint32_t width, uint32_t height, uint32_t stride,
+uint32_t format, uint8_t *data) {
+	uint32_t buffer_size = stride*height;
+	VkDeviceMemory mem;
+	VkBuffer buffer = create_buffer(buffer_size, &mem, device);
+	void *dest;
+	vkMapMemory(device, mem, 0, buffer_size, 0, &dest);
+	errlog("MEMCPY START");
+	memcpy(dest, data, (size_t) buffer_size);
+	errlog("MEMCPY DONE");
+	vkUnmapMemory(device, mem);
+
+	commands[1] = record_command_copy3(device, command_pool, buffer,
+	screen_image);
+	VkSubmitInfo submitInfo = {
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = commands+1
+	};
+	VkFence fence;
+	VkFenceCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
+		};
+	vkCreateFence(device, &info, NULL, &fence);
+	errlog("COPY START");
+	vkQueueSubmit(queue, 1, &submitInfo, fence);
+	vkWaitForFences(device, 1, &fence, VK_TRUE, 100000000);
+	errlog("COPY DONE");
+	vkResetFences(device, 1, &fence);
+
+	vkDestroyBuffer(device, buffer, NULL);
+	vkFreeMemory(device, mem, NULL);
+}
+
 int vulkan_main(int i, int fd, int width, int height, int stride) {
 	fd = dup(fd); // otherwise I can't import the same fd again
 	// END
