@@ -17,6 +17,7 @@ void drm_handle_event(int fd);
 
 int screen_get_gpu_fd(struct screen *);
 int screen_get_bo_fd(struct screen *);
+uint32_t screen_get_bo_stride(struct screen *);
 struct gbm_device *screen_get_gbm_device(struct screen *);
 struct box screen_get_dimensions(struct screen *S);
 void screen_post_direct(struct screen *, uint32_t width, uint32_t height,

@@ -26,6 +26,7 @@
 #include <extensions/xdg_shell/xdg_wm_base.h>
 #include <extensions/xdg_shell/xdg_surface.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
+#include <util/box.h>
 
 #include <backend/vulkan.h>
 
@@ -309,7 +310,10 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	vulkan_init(screen_get_bo_fd(server->screen));
+	// maybe move to screen
+	struct box box= screen_get_dimensions(server->screen);
+	vulkan_init(screen_get_bo_fd(server->screen), box.width, box.height,
+	screen_get_bo_stride(server->screen));
 	vulkan_main(0, 0,0,0,0);
 	screen_post(server->screen);
 

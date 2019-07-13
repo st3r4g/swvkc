@@ -215,7 +215,9 @@ int gbm_setup(struct screen *S) {
 	}
 
 	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR;
-	S->gbm_bo = gbm_bo_create(S->gbm_device, 1920, 1080, GBM_BO_FORMAT_XRGB8888, flags);
+	struct box screen_size = screen_get_dimensions(S);
+	S->gbm_bo = gbm_bo_create(S->gbm_device, screen_size.width,
+	screen_size.height, GBM_BO_FORMAT_XRGB8888, flags);
 	if (!S->gbm_bo) {
 		fprintf(stderr, "gbm_bo_create failed\n");
 		return 1;
@@ -398,6 +400,10 @@ int screen_get_gpu_fd(struct screen *S) {
 
 int screen_get_bo_fd(struct screen *S) {
 	return gbm_bo_get_fd(S->gbm_bo);
+}
+
+uint32_t screen_get_bo_stride(struct screen *S) {
+	return gbm_bo_get_stride(S->gbm_bo);
 }
 
 struct gbm_device *screen_get_gbm_device(struct screen *S) {

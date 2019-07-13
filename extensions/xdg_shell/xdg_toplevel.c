@@ -126,5 +126,5 @@ void xdg_toplevel_new(struct wl_resource *resource, struct wl_resource
 	*state2 = XDG_TOPLEVEL_STATE_MAXIMIZED;
 //	struct box box = screen_get_dimensions(server_get_screen(server)); TODO
 //	xdg_toplevel_send_configure(resource, box.width, box.height, &array);
-	xdg_toplevel_send_configure(resource, 1366, 768, &array);
+	xdg_toplevel_send_configure(resource, 500, 500, &array);
 }

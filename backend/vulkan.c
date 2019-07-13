@@ -371,7 +371,7 @@ img, VkImage img2) {
 		.srcOffset = {0,0,0},
 		.dstSubresource = imageSubresource,
 		.dstOffset = {200,100,0},
-		.extent = {1366,768,1},
+		.extent = {500,500,1},
 	};
 	vkCmdCopyImage(cmdbuf, img,
 	VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, img2,
@@ -439,7 +439,7 @@ buf, VkImage img2) {
 		.bufferImageHeight = 0,
 		.imageSubresource = imageSubresource,
 		.imageOffset = {200,100,0},
-		.imageExtent = {1366,768,1},
+		.imageExtent = {500,500,1},
 	};
 	vkCmdCopyBufferToImage(cmdbuf, buf, img2,
 	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
@@ -458,7 +458,7 @@ VkCommandBuffer commands[2] = {0,0};
 VkImage screen_image;
 
 
-int vulkan_init(int fd) {
+int vulkan_init(int fd, uint32_t width, uint32_t height, uint32_t stride) {
 	VkInstance instance = create_instance();
 	if (instance == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
@@ -497,8 +497,8 @@ int vulkan_init(int fd) {
 	 * Trying to post the dmabuf
 	 */
 
-	screen_image = create_image(1920, 1080, device);
-	VkDeviceMemory screen_memory = import_memory(fd, 8294400, device);
+	screen_image = create_image(width, height, device);
+	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
 	bind_image_memory(device, screen_image, screen_memory);
 	commands[0] = record_command_clear(device, command_pool, screen_image);
 	return EXIT_SUCCESS;
