@@ -208,13 +208,13 @@ int gbm_setup(struct screen *S) {
 	}
 
 	int ret = gbm_device_is_format_supported(S->gbm_device,
-	GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
+	GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
 	if (!ret) {
 		fprintf(stderr, "format unsupported\n");
 		return 1;
 	}
 
-	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR;
+	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
 	struct box screen_size = screen_get_dimensions(S);
 	S->gbm_bo = gbm_bo_create(S->gbm_device, screen_size.width,
 	screen_size.height, GBM_BO_FORMAT_XRGB8888, flags);
@@ -404,6 +404,10 @@ int screen_get_bo_fd(struct screen *S) {
 
 uint32_t screen_get_bo_stride(struct screen *S) {
 	return gbm_bo_get_stride(S->gbm_bo);
+}
+
+uint64_t screen_get_bo_modifier(struct screen *S) {
+	return gbm_bo_get_modifier(S->gbm_bo);
 }
 
 struct gbm_device *screen_get_gbm_device(struct screen *S) {

@@ -104,9 +104,23 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev) {
 	return dev;
 }
 
-VkImage create_image(int32_t width, int32_t height, VkDevice dev) {
+VkImage create_image(int32_t width, int32_t height, uint32_t stride, uint64_t modifier, VkDevice dev) {
+	VkSubresourceLayout layout = {
+		.offset = 0,
+		.size = 0,
+		.rowPitch = stride,
+		.arrayPitch = 0,
+		.depthPitch = 0,
+	};
+	VkImageDrmFormatModifierExplicitCreateInfoEXT info_next2 = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT,
+		.drmFormatModifier = modifier,
+		.drmFormatModifierPlaneCount = 1,
+		.pPlaneLayouts = &layout
+	};
 	VkExternalMemoryImageCreateInfo info_next = {
 		.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
+		.pNext = &info_next2,
 		.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
 	};
 	// I must convert from DRM to Vk formats
@@ -122,7 +136,7 @@ VkImage create_image(int32_t width, int32_t height, VkDevice dev) {
 		.mipLevels = 1,
 		.arrayLayers = 1,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.tiling = VK_IMAGE_TILING_LINEAR, // TODO
+		.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, // TODO
 		.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT, // or SRC
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 //		.queueFamilyIndexCount = 0, ignored
@@ -458,7 +472,7 @@ VkCommandBuffer commands[2] = {0,0};
 VkImage screen_image;
 
 
-int vulkan_init(int fd, uint32_t width, uint32_t height, uint32_t stride) {
+int vulkan_init(int fd, uint32_t width, uint32_t height, uint32_t stride, uint64_t modifier) {
 	VkInstance instance = create_instance();
 	if (instance == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
@@ -497,7 +511,7 @@ int vulkan_init(int fd, uint32_t width, uint32_t height, uint32_t stride) {
 	 * Trying to post the dmabuf
 	 */
 
-	screen_image = create_image(width, height, device);
+	screen_image = create_image(width, height, stride, modifier, device);
 	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
 	bind_image_memory(device, screen_image, screen_memory);
 	commands[0] = record_command_clear(device, command_pool, screen_image);
@@ -587,7 +601,7 @@ uint32_t format, uint8_t *data) {
 	vkFreeMemory(device, mem, NULL);
 }
 
-int vulkan_main(int i, int fd, int width, int height, int stride) {
+int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) {
 	fd = dup(fd); // otherwise I can't import the same fd again
 	// END
 
@@ -596,7 +610,7 @@ int vulkan_main(int i, int fd, int width, int height, int stride) {
 VkImage image;
 VkDeviceMemory memory;
 	if (i == 1) {
-	image = create_image(width, height, device);
+	image = create_image(width, height, stride, mod, device); //TODO
 	memory = import_memory(fd, stride*height, device);
 	bind_image_memory(device, image, memory);
 

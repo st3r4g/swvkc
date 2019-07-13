@@ -313,8 +313,8 @@ int main(int argc, char *argv[]) {
 	// maybe move to screen
 	struct box box= screen_get_dimensions(server->screen);
 	vulkan_init(screen_get_bo_fd(server->screen), box.width, box.height,
-	screen_get_bo_stride(server->screen));
-	vulkan_main(0, 0,0,0,0);
+	screen_get_bo_stride(server->screen), screen_get_bo_modifier(server->screen));
+	vulkan_main(0, 0,0,0,0,0);
 	screen_post(server->screen);
 
 	wl_display_run(D);

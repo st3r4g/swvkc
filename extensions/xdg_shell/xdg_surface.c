@@ -84,7 +84,7 @@ errlog("%d %d %d %d %d %d %d", width, height, format, fd, stride, offset, mod);
 	// 2) schedule pageflip with new screen content
 	/*screen_post_direct(server_get_screen(surface->server),
 	width, height, format, fd, stride, offset, mod);*/
-	vulkan_main(1, fd, width, height, stride);
+	vulkan_main(1, fd, width, height, stride, mod);
 }
 
 void shmbuf(struct wl_resource *buffer) {
@@ -119,7 +119,7 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 				dmabuf(buffer);
 			else
 				shmbuf(buffer);
-//			screen_post(server_get_screen(surface->server)); NOT
+			screen_post(server_get_screen(surface->server));
 //			NEEDED, screen refresh (scanout) happens automatically
 //			from the currently bound buffer. Will be needed for
 //			double buffering

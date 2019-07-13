@@ -23,8 +23,8 @@ create_params};
 void zwp_linux_dmabuf_v1_new(struct wl_resource *resource) {
 	wl_resource_set_implementation(resource, &impl, NULL, NULL);
 //	zwp_linux_dmabuf_v1_send_modifier(resource, 875713089, 0, 0);//2?
-	zwp_linux_dmabuf_v1_send_modifier(resource, DRM_FORMAT_XRGB8888, 0, 0);//2?
-//	zwp_linux_dmabuf_v1_send_modifier(resource, DRM_FORMAT_XRGB8888, 16777216, 1);//2?
+//	zwp_linux_dmabuf_v1_send_modifier(resource, DRM_FORMAT_XRGB8888, 0, 0);//2?
+	zwp_linux_dmabuf_v1_send_modifier(resource, DRM_FORMAT_XRGB8888, 16777216, 1);//2?
 //	zwp_linux_dmabuf_v1_send_modifier(resource, DRM_FORMAT_XBGR8888, 0, 0);//2?
 //	zwp_linux_dmabuf_v1_send_modifier(resource, DRM_FORMAT_XBGR8888, 16777216, 1);//2?
 //	zwp_linux_dmabuf_v1_send_modifier(resource, DRM_FORMAT_XRGB8888, 16777216, 1);//2?
