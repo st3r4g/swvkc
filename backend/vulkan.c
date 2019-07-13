@@ -30,11 +30,8 @@ VkInstance create_instance() {
 	VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	createInfo2.pfnUserCallback = debugCallback;
 
-
 	const char *extensions[] = {
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-		VK_KHR_SURFACE_EXTENSION_NAME,
-		VK_KHR_DISPLAY_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
 	};
 	const char *layers[] = {"VK_LAYER_LUNARG_standard_validation"};
@@ -77,7 +74,6 @@ VkPhysicalDevice get_physical_device(VkInstance inst) {
 
 VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev) {
 	const char *extensions[] = {
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
 		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
@@ -215,62 +211,6 @@ VkDeviceMemory import_memory_from_shm(uint32_t size, uint8_t *data, VkDevice dev
 
 VkResult bind_image_memory(VkDevice dev, VkImage img, VkDeviceMemory mem) {
 	return vkBindImageMemory(dev, img, mem, 0);
-}
-
-VkSurfaceKHR create_surface(VkInstance inst, VkPhysicalDevice pdev) {
-	uint32_t n = 1;
-	VkDisplayPropertiesKHR propsDisplay;
-	vkGetPhysicalDeviceDisplayPropertiesKHR(pdev, &n, &propsDisplay);
-	if (n == 0) {
-		fprintf(stderr, "ERROR: create_surface() failed.\n");
-		return VK_NULL_HANDLE;
-	}
-
-	VkDisplayModePropertiesKHR props;
-	vkGetDisplayModePropertiesKHR(pdev, propsDisplay.display, &n, &props);
-
-	VkDisplaySurfaceCreateInfoKHR info = {
-		.sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR,
-		.displayMode = props.displayMode,
-		.transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-		.alphaMode = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR,
-		.imageExtent = props.parameters.visibleRegion
-	};
-	VkSurfaceKHR surf;
-	if (vkCreateDisplayPlaneSurfaceKHR(inst, &info, NULL, &surf)) {
-		fprintf(stderr, "ERROR: create_surface() failed.\n");
-		return VK_NULL_HANDLE;
-	}
-	return surf;
-}
-
-VkSwapchainKHR create_swapchain(VkPhysicalDevice pdev, VkDevice dev, VkSurfaceKHR surf) {
-	VkSurfaceCapabilitiesKHR caps;
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pdev, surf, &caps);
-
-	VkSwapchainCreateInfoKHR info = {
-		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-		.surface = surf,
-		.minImageCount = 1,
-		.imageFormat = VK_FORMAT_B8G8R8A8_UNORM,
-		.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-		.imageExtent = caps.currentExtent,
-		.imageArrayLayers = 1,
-		.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-		VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-		.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-		.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-		.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-		.presentMode = VK_PRESENT_MODE_FIFO_KHR,
-		.clipped = VK_TRUE,
-		.oldSwapchain = VK_NULL_HANDLE,
-	};
-	VkSwapchainKHR swp;
-	if (vkCreateSwapchainKHR(dev, &info, NULL, &swp)) {
-		fprintf(stderr, "ERROR: create_swapchain() failed.\n");
-		return VK_NULL_HANDLE;
-	}
-	return swp;
 }
 
 VkCommandPool create_command_pool(VkDevice dev) {
@@ -483,33 +423,15 @@ int vulkan_init(int fd, uint32_t width, uint32_t height, uint32_t stride, uint64
 		return EXIT_FAILURE;
 	printf("physical device created\n");
 
-/*	VkSurfaceKHR surface = create_surface(instance, physical_device);
-	if (surface == VK_NULL_HANDLE)
-		return EXIT_FAILURE;*/
-
 	device = create_device(instance, physical_device);
 	if (device == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
 
-/*	VkSwapchainKHR swapchain = create_swapchain(physical_device, device, surface);
-	if (swapchain == VK_NULL_HANDLE)
-		return EXIT_FAILURE;*/
-
 	vkGetDeviceQueue(device, 0, 0, &queue);
-
-/*	uint32_t n = 1;
-	VkImage image;
-	vkGetSwapchainImagesKHR(device, swapchain, &n, &image);*/
 
 	command_pool = create_command_pool(device);
 	if (command_pool == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
-
-//	commands[0] = record_command_clear(device, command_pool, image);
-
-	/*
-	 * Trying to post the dmabuf
-	 */
 
 	screen_image = create_image(width, height, stride, modifier, device);
 	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
@@ -605,8 +527,6 @@ int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) 
 	fd = dup(fd); // otherwise I can't import the same fd again
 	// END
 
-/*	uint32_t index;
-	vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &index);*/
 VkImage image;
 VkDeviceMemory memory;
 	if (i == 1) {
@@ -641,20 +561,9 @@ VkDeviceMemory memory;
 
 	close(fd);
 
-
-/*	VkPresentInfoKHR presentInfo = {
-		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-		.swapchainCount = 1,
-		.pSwapchains = &swapchain,
-		.pImageIndices = &index
-	};
-	vkQueuePresentKHR(queue, &presentInfo);*/
-
 //	vkFreeCommandBuffers(device, command_pool, 1, commands);
 
 //	vkDestroyCommandPool(device, command_pool, NULL);
-/*	vkDestroySwapchainKHR(device, swapchain, NULL);
-	vkDestroySurfaceKHR(instance, surface, NULL);*/
 //	vkDestroyDevice(device, NULL);
 //	vkDestroyInstance(instance, NULL);
 
