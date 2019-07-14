@@ -23,7 +23,7 @@ src += [x+'xdg_shell/xdg_wm_base.c',
 src += ['legacy_wl_drm.c', 'main.c']
 
 wayland_protocols = dependency('wayland-protocols')
-path = wayland_protocols.get_pkgconfig_variable('pkgdatadir')
+protocols_path = wayland_protocols.get_pkgconfig_variable('pkgdatadir')
 
 wayland_scanner_dep = dependency('wayland-scanner', required: false, native: true)
 if wayland_scanner_dep.found()
@@ -35,54 +35,28 @@ else
 	wayland_scanner = find_program('wayland-scanner', native: true)
 endif
 
-xdg_shell_server_protocol = custom_target(
-	'xdg-shell-server-protocol',
-	output: 'xdg-shell-server-protocol.h',
-	input: path/'stable/xdg-shell/xdg-shell.xml',
-	command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
-)
+protocols = [
+	'stable/xdg-shell/xdg-shell.xml',
+	'unstable/fullscreen-shell/fullscreen-shell-unstable-v1.xml',
+	'unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml'
+]
 
-xdg_shell_code = custom_target(
-	'xdg-shell-code',
-	output: 'xdg-shell-code.c',
-	input: path/'stable/xdg-shell/xdg-shell.xml',
-	command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
-)
+gen = []
 
-fullscreen_shell_unstable_v1_server_protocol = custom_target(
-	'fullscreen-shell-unstable-v1-server-protocol',
-	output: 'fullscreen-shell-unstable-v1-server-protocol.h',
-	input: path/'unstable/fullscreen-shell/fullscreen-shell-unstable-v1.xml',
-	command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
-)
-
-fullscreen_shell_unstable_v1_code = custom_target(
-	'fullscreen-shell-unstable-v1-code',
-	output: 'fullscreen-shell-unstable-v1-code.c',
-	input: path/'unstable/fullscreen-shell/fullscreen-shell-unstable-v1.xml',
-	command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
-)
-
-linux_dmabuf_unstable_v1_server_protocol = custom_target(
-	'linux-dmabuf-unstable-v1-server-protocol',
-	output: 'linux-dmabuf-unstable-v1-server-protocol.h',
-	input: path/'unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml',
-	command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
-)
-
-linux_dmabuf_unstable_v1_code = custom_target(
-	'linux-dmabuf-unstable-v1-code',
-	output: 'linux-dmabuf-unstable-v1-code.c',
-	input: path/'unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml',
-	command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
-)
-
-src += xdg_shell_server_protocol
-src += xdg_shell_code
-src += fullscreen_shell_unstable_v1_server_protocol
-src += fullscreen_shell_unstable_v1_code
-src += linux_dmabuf_unstable_v1_server_protocol
-src += linux_dmabuf_unstable_v1_code
+foreach p : protocols
+	gen += custom_target(
+		p.underscorify()+'_server_protocol',
+		output: '@BASENAME@-server-protocol.h',
+		input: protocols_path/p,
+		command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@']
+	)
+	gen += custom_target(
+		p.underscorify()+'_code',
+		output: '@BASENAME@-code.c',
+		input: protocols_path/p,
+		command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@']
+	)
+endforeach
 
 dep = [wayland_protocols]
 dep += dependency('egl') # required for legacy wl_drm
@@ -95,4 +69,4 @@ dep += dependency('xkbcommon')
 
 inc = include_directories('include')
 
-executable('swvkc', src, dependencies : dep, include_directories : inc)
+executable('swvkc', [src, gen], dependencies : dep, include_directories : inc)
