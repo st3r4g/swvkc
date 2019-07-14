@@ -307,7 +307,7 @@ int main(int argc, char *argv[]) {
 	if (!server->input)
 		return EXIT_FAILURE;
 	
-//	legacy_wl_drm_setup(D, screen_get_gbm_device(server->screen));
+	legacy_wl_drm_setup(D, screen_get_gbm_device(server->screen));
 
 	struct wl_event_loop *el = wl_display_get_event_loop(D);
 	wl_event_loop_add_fd(el, screen_get_gpu_fd(server->screen),

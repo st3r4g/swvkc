@@ -403,7 +403,7 @@ VkCommandBuffer record_command_clear3(VkDevice dev, VkCommandPool pool, VkBuffer
 }
 
 VkCommandBuffer record_command_copy(VkDevice dev, VkCommandPool pool, VkImage
-img, VkImage img2) {
+img, VkImage img2, uint32_t width, uint32_t height) {
 	VkCommandBufferAllocateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 		.commandPool = pool,
@@ -430,8 +430,8 @@ img, VkImage img2) {
 		.srcSubresource = imageSubresource,
 		.srcOffset = {0,0,0},
 		.dstSubresource = imageSubresource,
-		.dstOffset = {200,100,0},
-		.extent = {500,500,1},
+		.dstOffset = {0,0,0},
+		.extent = {width,height,1},
 	};
 	vkCmdCopyImage(cmdbuf, img,
 	VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, img2,
@@ -470,7 +470,7 @@ buf, VkBuffer buf2) {
 }
 
 VkCommandBuffer record_command_copy3(VkDevice dev, VkCommandPool pool, VkBuffer
-buf, VkImage img2) {
+buf, VkImage img2, uint32_t width, uint32_t height) {
 	VkCommandBufferAllocateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 		.commandPool = pool,
@@ -498,8 +498,8 @@ buf, VkImage img2) {
 		.bufferRowLength = 0,
 		.bufferImageHeight = 0,
 		.imageSubresource = imageSubresource,
-		.imageOffset = {200,100,0},
-		.imageExtent = {500,500,1},
+		.imageOffset = {0,0,0},
+		.imageExtent = {width,height,1},
 	};
 	vkCmdCopyBufferToImage(cmdbuf, buf, img2,
 	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
@@ -610,7 +610,7 @@ uint32_t format, uint8_t *data) {
 	vkUnmapMemory(device, mem);
 
 	commands[1] = record_command_copy3(device, command_pool, buffer,
-	screen_image);
+	screen_image, width, height);
 	VkSubmitInfo submitInfo = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.commandBufferCount = 1,
@@ -623,7 +623,7 @@ uint32_t format, uint8_t *data) {
 	vkCreateFence(device, &info, NULL, &fence);
 	errlog("COPY START");
 	vkQueueSubmit(queue, 1, &submitInfo, fence);
-	vkWaitForFences(device, 1, &fence, VK_TRUE, 100000000);
+	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
 	errlog("COPY DONE");
 	vkResetFences(device, 1, &fence);
 
@@ -642,7 +642,7 @@ VkDeviceMemory memory;
 	bind_image_memory(device, image, memory);
 
 		commands[1] = record_command_copy(device, command_pool, image,
-		screen_image);
+		screen_image, width, height);
 	} else {
 		screen_image = create_image(width, height, stride, mod, device);
 		VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
