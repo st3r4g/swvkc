@@ -518,7 +518,7 @@ VkCommandBuffer commands[2] = {0,0};
 VkImage screen_image;
 
 
-int vulkan_init(bool *dmabuf, bool *dmabuf_mod, int fd, uint32_t width, uint32_t height, uint32_t stride, uint64_t modifier) {
+int vulkan_init(bool *dmabuf, bool *dmabuf_mod) {
 	bool dmabuf_inst, dmabuf_mod_inst;
 	VkInstance instance = create_instance(&dmabuf_inst, &dmabuf_mod_inst);
 	if (instance == VK_NULL_HANDLE)
@@ -545,10 +545,6 @@ int vulkan_init(bool *dmabuf, bool *dmabuf_mod, int fd, uint32_t width, uint32_t
 	if (command_pool == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
 
-	screen_image = create_image(width, height, stride, modifier, device);
-	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
-	bind_image_memory(device, screen_image, screen_memory);
-	commands[0] = record_command_clear(device, command_pool, screen_image);
 	return EXIT_SUCCESS;
 }
 
@@ -637,7 +633,6 @@ uint32_t format, uint8_t *data) {
 
 int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) {
 	fd = dup(fd); // otherwise I can't import the same fd again
-	// END
 
 VkImage image;
 VkDeviceMemory memory;
@@ -648,6 +643,11 @@ VkDeviceMemory memory;
 
 		commands[1] = record_command_copy(device, command_pool, image,
 		screen_image);
+	} else {
+		screen_image = create_image(width, height, stride, mod, device);
+		VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
+		bind_image_memory(device, screen_image, screen_memory);
+		commands[0] = record_command_clear(device, command_pool, screen_image);
 	}
 
 	VkSubmitInfo submitInfo = {

@@ -53,15 +53,15 @@ struct screen {
 };
 
 int drm_setup(struct screen *);
-int gbm_setup(struct screen *);
+int gbm_setup(struct screen *, bool dmabuf_mod);
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
-unsigned int, void*), void *user_data) {
+unsigned int, void*), void *user_data, bool dmabuf_mod) {
 	struct screen *screen = calloc(1, sizeof(struct screen));
 	screen->vblank_notify = vblank_notify;
 	screen->user_data = user_data;
 	drm_setup(screen);
-	gbm_setup(screen);
+	gbm_setup(screen, dmabuf_mod);
 
 	return screen;
 }
@@ -200,21 +200,24 @@ int drm_setup(struct screen *S) {
 	return 0;
 }
 
-int gbm_setup(struct screen *S) {
+int gbm_setup(struct screen *S, bool dmabuf_mod) {
 	S->gbm_device = gbm_create_device(S->gpu_fd);
 	if (!S->gbm_device) {
 		fprintf(stderr, "gbm_create_device failed\n");
 		return 1;
 	}
 
+	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
+	if (!dmabuf_mod)
+		flags |= GBM_BO_USE_LINEAR;
+
 	int ret = gbm_device_is_format_supported(S->gbm_device,
-	GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+	GBM_BO_FORMAT_XRGB8888, flags);
 	if (!ret) {
 		fprintf(stderr, "format unsupported\n");
 		return 1;
 	}
 
-	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
 	struct box screen_size = screen_get_dimensions(S);
 	S->gbm_bo = gbm_bo_create(S->gbm_device, screen_size.width,
 	screen_size.height, GBM_BO_FORMAT_XRGB8888, flags);

@@ -1,6 +1,7 @@
 #ifndef MYSCREEN_H
 #define MYSCREEN_H
 
+#include <stdbool.h>
 #include <util/box.h>
 
 struct screen;
@@ -11,7 +12,7 @@ struct screen;
  */
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
-unsigned int, void*), void *user_data);
+unsigned int, void*), void *user_data, bool dmabuf_drm);
 
 void drm_handle_event(int fd);
 

@@ -243,9 +243,10 @@ version, uint32_t id) {
 
 static void zwp_linux_dmabuf_v1_bind(struct wl_client *client, void *data, uint32_t
 version, uint32_t id) {
+	bool *dmabuf_mod = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&zwp_linux_dmabuf_v1_interface, version, id);
-	zwp_linux_dmabuf_v1_new(resource);
+	zwp_linux_dmabuf_v1_new(resource, *dmabuf_mod);
 }
 
 static void zwp_fullscreen_shell_v1_bind(struct wl_client *client, void *data, uint32_t
@@ -260,19 +261,21 @@ int main(int argc, char *argv[]) {
 	wl_list_init(&server->xdg_surface_list);
 //	wl_list_init(&server->xdg_shell_v6_list);
 
-	server->screen = screen_setup(vblank_notify, server);
+	bool dmabuf = false, dmabuf_mod = false;
+	vulkan_init(&dmabuf, &dmabuf_mod);
+	const char *words[] = {"DISABLED", "enabled"};
+	errlog("swvkc DMABUF support: %s", words[dmabuf]);
+	errlog("swvkc DMABUF with MODIFIERS support: %s", words[dmabuf_mod]);
+
+	server->screen = screen_setup(vblank_notify, server, dmabuf_mod);
 	if (!server->screen)
 		return EXIT_FAILURE;
 
 	// maybe move to screen
 	struct box box= screen_get_dimensions(server->screen);
-	bool dmabuf = false, dmabuf_mod = false;
-	vulkan_init(&dmabuf, &dmabuf_mod, screen_get_bo_fd(server->screen), box.width, box.height,
-	screen_get_bo_stride(server->screen), screen_get_bo_modifier(server->screen));
-	const char *words[] = {"DISABLED", "enabled"};
-	errlog("swvkc DMABUF support: %s", words[dmabuf]);
-	errlog("swvkc DMABUF with MODIFIERS support: %s", words[dmabuf_mod]);
-	vulkan_main(0, 0,0,0,0,0);
+	vulkan_main(0,screen_get_bo_fd(server->screen), box.width, box.height,
+	screen_get_bo_stride(server->screen),
+	screen_get_bo_modifier(server->screen));
 
 	server->display = wl_display_create();
 	struct wl_display *D = server->display;
@@ -292,8 +295,8 @@ int main(int argc, char *argv[]) {
 /*	wl_global_create(D, &zxdg_shell_v6_interface, 1, server,
 	xdg_shell_v6_bind);*/
 	if (dmabuf)
-		wl_global_create(D, &zwp_linux_dmabuf_v1_interface, 3, NULL,
-		zwp_linux_dmabuf_v1_bind);
+		wl_global_create(D, &zwp_linux_dmabuf_v1_interface, 3,
+		&dmabuf_mod, zwp_linux_dmabuf_v1_bind);
 /*	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
 	zwp_fullscreen_shell_v1_bind);*/
 
