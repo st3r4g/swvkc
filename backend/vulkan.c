@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,6 +6,12 @@
 
 #include <vulkan/vulkan.h>
 #include <util/log.h>
+
+struct global {
+	bool dmabuf_mod;
+};
+
+struct global state = {0};
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -16,7 +23,60 @@ VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
 
 static PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerProperties = 0;
 
-VkInstance create_instance() {
+static int compare_ext_names(const void *a_, const void *b_) {
+	const VkExtensionProperties *a = a_;
+	const VkExtensionProperties *b = b_;
+	return strcmp(a->extensionName, b->extensionName);
+}
+
+static int is_ext_name(const void *a_, const void *b_) {
+	const VkExtensionProperties *a = a_;
+	const char *b = b_;
+	return strcmp(a->extensionName, b);
+}
+
+bool check_ext(int n_ext, VkExtensionProperties *ext_p, const char *ext_req) {
+	qsort(ext_p, n_ext, sizeof(VkExtensionProperties), compare_ext_names);
+	void *found = bsearch(ext_req, ext_p, n_ext,
+	                    sizeof(VkExtensionProperties), is_ext_name);
+	bool ret = found != 0;
+	const char *words[] = {"is NOT", "is"};
+	errlog("Extension %s %s supported", ext_req, words[ret]);
+	return ret;
+}
+
+VkInstance create_instance(bool *dmabuf, bool *dmabuf_mod) {
+	uint32_t n_ext;
+	vkEnumerateInstanceExtensionProperties(NULL, &n_ext, NULL);
+	VkExtensionProperties *ext_p = malloc(n_ext*sizeof(*ext_p));
+	vkEnumerateInstanceExtensionProperties(NULL, &n_ext, ext_p);
+
+	check_ext(n_ext, ext_p, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+	*dmabuf = check_ext(n_ext, ext_p, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+	*dmabuf_mod = *dmabuf;
+
+	const char *enabled_ext_none[] = {
+		VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+	};
+
+	const char *enabled_ext_dmabuf[] = {
+		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+		VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME
+	};
+
+	uint32_t enabled_ext_count = 0;
+	const char **enabled_ext;
+
+	if (*dmabuf) {
+		enabled_ext_count = sizeof(enabled_ext_dmabuf)/sizeof(char*);
+		enabled_ext = enabled_ext_dmabuf;
+	} else {
+		enabled_ext_count = sizeof(enabled_ext_none)/sizeof(char*);
+		enabled_ext = enabled_ext_none;
+	}
+
 	VkDebugUtilsMessengerCreateInfoEXT createInfo2 = {0};
 	createInfo2.sType =
 	VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -30,18 +90,14 @@ VkInstance create_instance() {
 	VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 	createInfo2.pfnUserCallback = debugCallback;
 
-	const char *extensions[] = {
-		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-		VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
-	};
-	const char *layers[] = {"VK_LAYER_LUNARG_standard_validation"};
+	const char *layers[] = {"VK_LAYER_KHRONOS_validation"};
 	VkInstanceCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 		.pNext = &createInfo2,
 		.enabledLayerCount = sizeof(layers)/sizeof(char*),
 		.ppEnabledLayerNames = layers,
-		.enabledExtensionCount = sizeof(extensions)/sizeof(char*),
-		.ppEnabledExtensionNames = extensions
+		.enabledExtensionCount = enabled_ext_count,
+		.ppEnabledExtensionNames = enabled_ext
 	};
 	VkInstance inst;
 	if (vkCreateInstance(&info, NULL, &inst)) {
@@ -72,13 +128,52 @@ VkPhysicalDevice get_physical_device(VkInstance inst) {
 	return pdev;
 }
 
-VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev) {
-	const char *extensions[] = {
+VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, bool *dmabuf_mod) {
+	uint32_t n_ext;
+	vkEnumerateDeviceExtensionProperties(pdev, NULL, &n_ext, NULL);
+	VkExtensionProperties *ext_p = malloc(n_ext*sizeof(*ext_p));
+	vkEnumerateDeviceExtensionProperties(pdev, NULL, &n_ext, ext_p);
+
+	*dmabuf = check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+	*dmabuf &= check_ext(n_ext, ext_p, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME);
+	*dmabuf_mod = *dmabuf;
+	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_KHR_BIND_MEMORY_2_EXTENSION_NAME);
+	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
+	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_KHR_MAINTENANCE1_EXTENSION_NAME);
+	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME);
+	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME);
+
+	const char *enabled_ext_dmabuf[] = {
+		VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
+		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME
+	};
+
+	const char *enabled_ext_dmabuf_mod[] = {
 		VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
 		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
-		VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME
+		VK_KHR_BIND_MEMORY_2_EXTENSION_NAME,
+		VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME,
+		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
+		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+		VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
+		VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME
 	};
+
+	uint32_t enabled_ext_count = 0;
+	const char **enabled_ext;
+
+	if (*dmabuf_mod) {
+		enabled_ext_count = sizeof(enabled_ext_dmabuf_mod)/sizeof(char*);
+		enabled_ext = enabled_ext_dmabuf_mod;
+	} else if (*dmabuf) {
+		enabled_ext_count = sizeof(enabled_ext_dmabuf)/sizeof(char*);
+		enabled_ext = enabled_ext_dmabuf;
+	}
+
 	float priority = 1.0f;
 	VkDeviceQueueCreateInfo infoQueue = {
 		.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -89,8 +184,8 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev) {
 		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
 		.queueCreateInfoCount = 1,
 		.pQueueCreateInfos = &infoQueue,
-		.enabledExtensionCount = sizeof(extensions)/sizeof(char*),
-		.ppEnabledExtensionNames = extensions,
+		.enabledExtensionCount = enabled_ext_count,
+		.ppEnabledExtensionNames = enabled_ext,
 	};
 	VkDevice dev;
 	if (vkCreateDevice(pdev, &info, NULL, &dev)) {
@@ -114,9 +209,20 @@ VkImage create_image(int32_t width, int32_t height, uint32_t stride, uint64_t mo
 		.drmFormatModifierPlaneCount = 1,
 		.pPlaneLayouts = &layout
 	};
+
+	VkImageDrmFormatModifierExplicitCreateInfoEXT *info_next2_p;
+	VkImageTiling tiling;
+	if (state.dmabuf_mod) {
+		info_next2_p = &info_next2;
+		tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+	} else {
+		info_next2_p = 0;
+		tiling = VK_IMAGE_TILING_LINEAR;
+	}
+
 	VkExternalMemoryImageCreateInfo info_next = {
 		.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
-		.pNext = &info_next2,
+		.pNext = info_next2_p,
 		.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
 	};
 	// I must convert from DRM to Vk formats
@@ -132,7 +238,7 @@ VkImage create_image(int32_t width, int32_t height, uint32_t stride, uint64_t mo
 		.mipLevels = 1,
 		.arrayLayers = 1,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, // TODO
+		.tiling = tiling,
 		.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT, // or SRC
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 //		.queueFamilyIndexCount = 0, ignored
@@ -412,8 +518,9 @@ VkCommandBuffer commands[2] = {0,0};
 VkImage screen_image;
 
 
-int vulkan_init(int fd, uint32_t width, uint32_t height, uint32_t stride, uint64_t modifier) {
-	VkInstance instance = create_instance();
+int vulkan_init(bool *dmabuf, bool *dmabuf_mod, int fd, uint32_t width, uint32_t height, uint32_t stride, uint64_t modifier) {
+	bool dmabuf_inst, dmabuf_mod_inst;
+	VkInstance instance = create_instance(&dmabuf_inst, &dmabuf_mod_inst);
 	if (instance == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
 	printf("Instance created\n");
@@ -423,9 +530,14 @@ int vulkan_init(int fd, uint32_t width, uint32_t height, uint32_t stride, uint64
 		return EXIT_FAILURE;
 	printf("physical device created\n");
 
-	device = create_device(instance, physical_device);
+	bool dmabuf_dev, dmabuf_mod_dev;
+	device = create_device(instance, physical_device, &dmabuf_dev, &dmabuf_mod_dev);
 	if (device == VK_NULL_HANDLE)
 		return EXIT_FAILURE;
+
+	*dmabuf = dmabuf_inst && dmabuf_dev;
+	*dmabuf_mod = dmabuf_mod_inst && dmabuf_mod_dev;
+	state.dmabuf_mod = *dmabuf_mod;
 
 	vkGetDeviceQueue(device, 0, 0, &queue);
 
