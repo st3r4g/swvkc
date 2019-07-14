@@ -7,10 +7,10 @@
 
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
-#include <protocols/xdg-shell-server-protocol.h>
-#include <protocols/xdg-shell-unstable-v6-server-protocol.h>
-#include <protocols/linux-dmabuf-unstable-v1-server-protocol.h>
-#include <protocols/fullscreen-shell-unstable-v1.h>
+#include <xdg-shell-server-protocol.h>
+//#include <xdg-shell-unstable-v6-server-protocol.h>
+#include <linux-dmabuf-unstable-v1-server-protocol.h>
+#include <fullscreen-shell-unstable-v1-server-protocol.h>
 
 #include <legacy_wl_drm.h> // legacy
 #include <backend/input.h>

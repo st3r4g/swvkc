@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include <protocols/xdg-shell-server-protocol.h>
+#include <xdg-shell-server-protocol.h>
 #include <wayland-server-protocol.h> //TODO: remove
 #include <extensions/xdg_shell/xdg_wm_base.h>
 #include <extensions/xdg_shell/xdg_surface.h>

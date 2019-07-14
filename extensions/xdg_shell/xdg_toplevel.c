@@ -1,7 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdlib.h>
-#include <protocols/xdg-shell-server-protocol.h>
+#include <xdg-shell-server-protocol.h>
 #include <extensions/xdg_shell/xdg_toplevel.h>
 #include <core/wl_surface.h>
 #include <backend/screen.h>

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include <wayland-server-protocol.h> // Just for one event
-#include <protocols/xdg-shell-server-protocol.h>
+#include <xdg-shell-server-protocol.h>
 #include <core/wl_surface.h>
 #include <extensions/xdg_shell/xdg_surface.h>
 #include <extensions/xdg_shell/xdg_toplevel.h>

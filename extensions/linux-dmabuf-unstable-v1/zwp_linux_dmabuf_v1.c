@@ -2,7 +2,7 @@
 
 #include <libdrm/drm_fourcc.h>
 
-#include <protocols/linux-dmabuf-unstable-v1-server-protocol.h>
+#include <linux-dmabuf-unstable-v1-server-protocol.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_buffer_params_v1.h>
 
 static void destroy(struct wl_client *client, struct wl_resource *resource) {

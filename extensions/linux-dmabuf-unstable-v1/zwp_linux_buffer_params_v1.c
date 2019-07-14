@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 
-#include <protocols/linux-dmabuf-unstable-v1-server-protocol.h>
+#include <linux-dmabuf-unstable-v1-server-protocol.h>
 #include <wayland-server-protocol.h>
 
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_buffer_params_v1.h>

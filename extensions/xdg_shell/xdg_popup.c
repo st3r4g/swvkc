@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include <protocols/xdg-shell-server-protocol.h>
+#include <xdg-shell-server-protocol.h>
 
 static void destroy(struct wl_client *client, struct wl_resource *resource) {
 
