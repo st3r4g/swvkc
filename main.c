@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,10 +26,14 @@
 #include <core/wl_surface.h> // da togliere
 #include <extensions/xdg_shell/xdg_wm_base.h>
 #include <extensions/xdg_shell/xdg_surface.h>
+#include <extensions/xdg_shell/xdg_toplevel.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
 #include <util/box.h>
+#include <util/util.h>
 
 #include <backend/vulkan.h>
+
+#include <linux/input-event-codes.h>
 
 struct server {
 	struct wl_display *display;
@@ -45,85 +50,87 @@ struct server {
 
 struct server *server;
 
-static void resource_created_notify(struct wl_listener *listener, void *data) {
-	struct wl_resource *resource = data;
-	const char *class = wl_resource_get_class(resource);
-	if (!strcmp(class, "xdg_surface"))
-		errlog("Created resource %s", class);
+struct window {
+	struct wl_resource *resource;
+	struct wl_list link;
+};
+
+struct wl_list window_list;
+struct xdg_toplevel_data *focused;
+
+int strncmp_case(const char *_l, const char *_r, size_t n) {
+	const unsigned char *l=(void *)_l, *r=(void *)_r;
+	if (!n--) return 0;
+	for (; *l && *r && n && (*l == *r || abs(*l - *r) == 32) ; l++, r++, n--);
+	if (abs(*l - *r) == 32)
+		return 0;
+	else
+		return *l - *r;
 }
 
-struct wl_listener resource_created = {.notify = resource_created_notify};
-
-static void client_created_notify(struct wl_listener *listener, void *data) {
-	struct wl_client *client = data;
-	wl_client_add_resource_created_listener(client, &resource_created);
-}
-
-struct wl_listener client_created = {.notify = client_created_notify};
-
-void server_window_create(struct server *server, struct xdg_surface0
-*xdg_surface) {
-	struct wl_list * head = &server->xdg_surface_list;
-	if (!wl_list_empty(head)) {
-	struct xdg_surface0 *an_xdg_surface;
-	an_xdg_surface = wl_container_of(head->next, an_xdg_surface, link);
-	if (an_xdg_surface->self)
-		wl_keyboard_send_leave(an_xdg_surface->keyboard, 0,
-		an_xdg_surface->surface);
+struct xdg_toplevel_data *match_app_id(char *name) {
+	struct xdg_toplevel_data *data, *match;
+	int i = 0;
+	wl_list_for_each(data, &window_list, link) {
+		if (!strncmp_case(name, data->app_id, strlen(name)))
+			match = data, i++;
 	}
-	wl_list_insert(head, &xdg_surface->link);
-
+	if (i == 1)
+		return match;
+	else
+		return NULL;
 }
 
-void server_window_destroy(struct server *server, struct xdg_surface0
-*xdg_surface) {
+void server_window_create(struct xdg_toplevel_data *new) {
+	if (!wl_list_empty(&window_list)) {
+		struct xdg_toplevel_data *old;
+		old = wl_container_of(window_list.next, old, link);
+		wl_keyboard_send_leave(old->xdg_surface_data->keyboard, 0,
+		old->xdg_surface_data->surface);
+		focused = NULL;
+	}
+	wl_list_insert(&window_list, &new->link);
+}
+
+void server_window_destroy(struct xdg_toplevel_data *old) {
 	struct wl_array array;
 	wl_array_init(&array); //Need the currently pressed keys
 //	wl_keyboard_send_leave(resource, 0, xdg_surface->surface);
-	wl_list_remove(&xdg_surface->link);
-	struct wl_list * head = &server->xdg_surface_list;
-	if (!wl_list_empty(head)) {
-	struct xdg_surface0 *an_xdg_surface;
-	an_xdg_surface = wl_container_of(head->next, an_xdg_surface, link);
-	if (an_xdg_surface->self)
-		wl_keyboard_send_enter(an_xdg_surface->keyboard, 0,
-		an_xdg_surface->surface, &array);
+	wl_list_remove(&old->link);
+	if (!wl_list_empty(&window_list)) {
+		struct xdg_toplevel_data *new;
+		new = wl_container_of(window_list.next, new, link);
+		wl_keyboard_send_enter(new->xdg_surface_data->keyboard, 0,
+		new->xdg_surface_data->surface, &array);
+		focused = new;
 	}
 }
 
-void server_change_focus(struct server *server) {
-	struct wl_list * head = &server->xdg_surface_list;
-	struct xdg_surface0 *an_xdg_surface;
-	an_xdg_surface = wl_container_of(head->next, an_xdg_surface, link);
-	if (an_xdg_surface->self) {
-		wl_keyboard_send_leave(an_xdg_surface->keyboard, 0,
-		an_xdg_surface->surface);
-	}
-	wl_list_remove(&an_xdg_surface->link);
-	wl_list_insert(head->prev, &an_xdg_surface->link);
+void server_set_focus(struct xdg_toplevel_data *data) {
+	focused = data;
+}
+
+void server_change_focus(struct xdg_toplevel_data *data) {
+	errlog("focused window: %s", focused->app_id);
+	errlog("new window: %s", data->app_id);
+	struct xdg_surface0 *old = focused->xdg_surface_data;
+	if (old->self)
+		wl_keyboard_send_leave(old->keyboard, 0, old->surface);
 	struct wl_array array;
 	wl_array_init(&array); //Need the currently pressed keys
-	struct xdg_surface0 *an_xdg_surface2;
-	an_xdg_surface2 = wl_container_of(head->next, an_xdg_surface2, link);
-	if (an_xdg_surface2->self) {
-		wl_keyboard_send_enter(an_xdg_surface2->keyboard, 0,
-		an_xdg_surface2->surface, &array);
-	}
+	struct xdg_surface0 *new = data->xdg_surface_data;
+	if (new->self)
+		wl_keyboard_send_enter(new->keyboard, 0, new->surface, &array);
+	focused = data;
+}
+
+int server_surface_is_focused(struct xdg_surface0 *data) {
+	return data == focused->xdg_surface_data;
 }
 
 struct screen *server_get_screen(struct server *server) {
 	return server->screen;
 }
-
-/*void server_focus(struct xdg_surface *new) {
-	struct server *S = new->server;
-	if (S->focused)
-		wl_keyboard_send_leave(S->focused->keyboard, 0, S->focused->surface);
-	struct wl_array array;
-	wl_array_init(&array);
-	wl_keyboard_send_enter(new->keyboard, 0, new->surface, &array);
-	S->focused = new;
-}*/
 
 static void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data) {
@@ -142,10 +149,10 @@ tv_sec, unsigned int tv_usec, void *user_data) {
 	struct timespec time;
 	clock_gettime(CLOCK_REALTIME, &time);
 
-	struct xdg_surface0 *xdg_surface;
-	wl_list_for_each(xdg_surface, &server->xdg_surface_list, link) {
+	struct xdg_toplevel_data *data;
+	wl_list_for_each(data, &window_list, link) {
 		struct surface *surface =
-		wl_resource_get_user_data(xdg_surface->surface);
+		wl_resource_get_user_data(data->xdg_surface_data->surface);
 		if (surface->frame) {
 			unsigned int ms = time.tv_sec * 1000 + time.tv_nsec / 1000000;
 			wl_callback_send_done(surface->frame, (uint32_t)ms);
@@ -162,23 +169,40 @@ static int gpu_ev_handler(int fd, uint32_t mask, void *data) {
 }
 
 static int key_ev_handler(int key_fd, uint32_t mask, void *data) {
+	static bool steal = false;
+	static int i = 0;
+	static char name[64] = {'\0'};
 	struct server *server = data;
 	struct aaa aaa;
 	if (input_handle_event(server->input, &aaa)) {
 		if (aaa.key == 59) { //F1
 			wl_display_terminate(server->display);
 			return 0;
-		}
-		if (aaa.key == 60 && aaa.state == 1) { //F2
-			server_change_focus(server);
+		} else if (aaa.key == KEY_LEFTMETA && aaa.state == 1) {
+			steal = true;
+			memset(name, '\0', i);
+			i = 0;
+			errlog("Win key pressed");
 			return 0;
-		}
-		if (!wl_list_empty(&server->xdg_surface_list)) {
-			struct xdg_surface0 *xdg_surface;
-			xdg_surface = wl_container_of(server->xdg_surface_list.next, xdg_surface, link);
-			if (xdg_surface->keyboard) //TODO: bad
-			if (wl_resource_get_user_data(xdg_surface->keyboard))
-				keyboard_send(wl_resource_get_user_data(xdg_surface->keyboard), &aaa);
+		} else if (aaa.key == KEY_LEFTMETA && aaa.state == 0) {
+			errlog("Win key released, written %s", name);
+			steal = false;
+			return 0;
+		} else if (steal && aaa.state == 1) {
+			errlog("the key '%s' was pressed", aaa.name);
+			name[i] = aaa.name[0];
+			i++;
+			struct xdg_toplevel_data *match = match_app_id(name);
+			errlog("match %p", (void*)match);
+			if (match)
+				server_change_focus(match);
+		} else if (!wl_list_empty(&window_list)) {
+			struct wl_resource *resource = focused->xdg_surface_data->keyboard;
+			if (resource) {
+				struct keyboard *data = wl_resource_get_user_data(resource);
+				if (data)
+				keyboard_send(data, &aaa);
+			}
 		}
 	}
 	return 0;
@@ -261,6 +285,8 @@ int main(int argc, char *argv[]) {
 	wl_list_init(&server->xdg_surface_list);
 //	wl_list_init(&server->xdg_shell_v6_list);
 
+	wl_list_init(&window_list);
+
 	bool dmabuf = false, dmabuf_mod = false;
 	vulkan_init(&dmabuf, &dmabuf_mod);
 	const char *words[] = {"DISABLED", "enabled"};
@@ -299,8 +325,6 @@ int main(int argc, char *argv[]) {
 		&dmabuf_mod, zwp_linux_dmabuf_v1_bind);
 /*	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
 	zwp_fullscreen_shell_v1_bind);*/
-
-	wl_display_add_client_created_listener(D, &client_created);
 
 // Can I move at the beginning of the program (still enter key stucks?)
 	server->input = input_setup();

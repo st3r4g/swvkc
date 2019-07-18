@@ -21,10 +21,7 @@ static void get_xdg_surface(struct wl_client *client, struct wl_resource
 	struct xdg_wm_base *xdg_wm_base = wl_resource_get_user_data(resource);
 	struct wl_resource *xdg_surf_resource = wl_resource_create(client,
 	&xdg_surface_interface, 1, id);
-	struct xdg_surface0 *xdg_surface = xdg_surface_new(xdg_surf_resource,
-	surface, xdg_wm_base->server);
-
-	server_window_create(xdg_wm_base->server, xdg_surface);
+	xdg_surface_new(xdg_surf_resource, surface, xdg_wm_base->server);
 }
 
 static void pong(struct wl_client *client, struct wl_resource *resource,

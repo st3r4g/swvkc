@@ -10,11 +10,12 @@
 #include <extensions/xdg_shell/xdg_toplevel.h>
 #include <extensions/linux-dmabuf-unstable-v1/wl_buffer_dmabuf.h>
 #include <util/log.h>
+#include <util/util.h>
 #include <backend/screen.h>
 #include <backend/vulkan.h>
 #include <server.h>
 
-static enum wl_iterator_result keyboard_set(struct wl_resource *resource,
+/*static enum wl_iterator_result keyboard_set(struct wl_resource *resource,
 void *user_data) {
 	if (!strcmp(wl_resource_get_class(resource), "wl_keyboard")) {
 		struct xdg_surface0 *xdg_surface = user_data;
@@ -22,7 +23,7 @@ void *user_data) {
 		return WL_ITERATOR_STOP;
 	}
 	return WL_ITERATOR_CONTINUE;
-}
+}*/
 
 static void destroy(struct wl_client *client, struct wl_resource *resource) {
 	wl_resource_destroy(resource);
@@ -33,7 +34,7 @@ uint32_t id) {
 	struct xdg_surface0 *data = wl_resource_get_user_data(resource);
 	struct wl_resource *toplevel_resource = wl_resource_create(client,
 	&xdg_toplevel_interface, 1, id);
-	xdg_toplevel_new(toplevel_resource, data->surface, data->server);
+	xdg_toplevel_new(toplevel_resource, data, data->server);
 	xdg_surface_send_configure(resource, 0);
 }
 
@@ -57,7 +58,8 @@ static void ack_configure(struct wl_client *client, struct wl_resource
 	struct xdg_surface0 *xdg_surface = wl_resource_get_user_data(resource);
 	struct wl_array array;
 	wl_array_init(&array); //Need the currently pressed keys
-	wl_client_for_each_resource(client, keyboard_set, xdg_surface);
+	xdg_surface->keyboard = util_wl_client_get_keyboard(client);
+//	wl_client_for_each_resource(client, keyboard_set, xdg_surface);
 	if (xdg_surface->keyboard) //TODO: not sure this is the right place
 	wl_keyboard_send_enter(xdg_surface->keyboard, 0, xdg_surface->surface,
 	&array);
@@ -113,7 +115,7 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 	current->window_geometry.height = pending->window_geometry.height;
 	
 	struct surface *surface = data;
-		if (surface->current->buffer && surface->staged & (1 << 0)) {
+		if (surface->current->buffer && surface->staged & (1 << 0) && server_surface_is_focused(xdg_surface)) {
 			struct wl_resource *buffer = surface->current->buffer;
 			if (wl_buffer_is_dmabuf(buffer))
 				dmabuf(buffer);
@@ -124,7 +126,9 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 //			from the currently bound buffer. Will be needed for
 //			double buffering
 			wl_buffer_send_release(buffer);
-		} else {
+		} else if (surface->current->buffer && surface->staged & (1 << 0)){
+			struct wl_resource *buffer = surface->current->buffer;
+			wl_buffer_send_release(buffer);
 //			surface->texture = 0, buf_w = 0, buf_h = 0;
 		}
 	
@@ -132,7 +136,6 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 
 static void xdg_surface_free(struct wl_resource *resource) {
 	struct xdg_surface0 *xdg_surface = wl_resource_get_user_data(resource);
-	server_window_destroy(xdg_surface->server, xdg_surface);
 	free(xdg_surface->current);
 	free(xdg_surface->pending);
 	free(xdg_surface);

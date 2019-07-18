@@ -233,7 +233,7 @@ int gbm_setup(struct screen *S, bool dmabuf_mod) {
 static void vblank_handler(int fd, unsigned int sequence, unsigned int tv_sec,
 unsigned int tv_usec, void *user_data) {
 	struct screen *screen = user_data;
-	errlog("VBLANK %d %.3f", sequence, tv_sec * 1000 + tv_usec / 1000.0);
+//	errlog("VBLANK %d %.3f", sequence, tv_sec * 1000 + tv_usec / 1000.0);
 	// TODO: better
 	if (flag == 0)
 		screen->vblank_notify(fd, sequence, tv_sec, tv_usec, screen->user_data);
@@ -391,8 +391,8 @@ void screen_post(struct screen *S) {
 	perror("atomic commit failed");
 	else {
 	fprintf(stderr, "atomic commit success\n");
-/*	if (fb_id)
-	drmModeRmFB(S->gpu_fd, fb_id);*/
+//	if (fb_id)
+//	drmModeRmFB(S->gpu_fd, fb_id);
 	}
 	drmModeAtomicFree(req);
 }

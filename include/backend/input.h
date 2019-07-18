@@ -8,6 +8,7 @@ unsigned int input_get_keymap_size(struct input *S);
 struct aaa {
 	unsigned int key;
 	unsigned int state;
+	char name[2];
 
 	unsigned int mods_depressed;
 	unsigned int mods_latched;
