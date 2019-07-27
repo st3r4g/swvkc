@@ -1,3 +1,11 @@
+## Issues with clients
+* `vkcube` and `vkcubepp` have to be compiled with DEMOS_WSI_SELECTION=WAYLAND,
+  but even then they won't work because they require the deprecated `wl_shell`
+  protocol
+  `Note! This protocol is deprecated and not intended for production use. For
+  desktop-style user interfaces, use xdg_shell. ` from
+  https://wayland.freedesktop.org/docs/html/apa.html#protocol-spec-wl_shell
+
 ## Vulkan extensions that we need
 * VK_KHR_external_memory_fd
 * VK_EXT_external_memory_dma_buf
@@ -36,11 +44,15 @@ memory
 `handle = gbm_bo_get_handle(bo).u32`
 
 ## TODO
-* ~~Implement `create` request in the dmabuf Wayland interface~~
-* ~~Visualize `weston-simple-dmabuf-drm` buffers~~
-* ~~Import shm buffers~~
+* Code cleanup
+* Investigate correct memory management and synchronization
+* Direct scanout
 
-## ISSUES
+## ISSUES/NOTES
+* Many clients (`kitty`, `alacritty`, ...) still depend on the presence of the
+  `wl_drm` 'legacy' extension to use dmabufs.
 * Is VK_EXT_external_memory_host useful for us? The shm buffer from Alacritty
   could be imported in this way (only one time though), but not the ones from
   weston-terminal or weston-simple-shm.
+* One gpu didn't support linear buffers for scanout, even though GBM allows
+  their creation (error on drmModeAddFB)
