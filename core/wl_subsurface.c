@@ -38,6 +38,8 @@ static const struct wl_subsurface_interface impl = {
 	.set_desync = set_desync,
 };
 
-void wl_subsurface_new(struct wl_resource *resource) {
-	wl_resource_set_implementation(resource, &impl, 0, 0);
+void wl_subsurface_new(struct wl_resource *subsurface, struct wl_resource
+*surface, struct wl_resource *parent) {
+
+	wl_resource_set_implementation(subsurface, &impl, 0, 0);
 }

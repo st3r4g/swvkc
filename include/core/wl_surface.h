@@ -6,6 +6,20 @@
 
 #include <util/box.h>
 
+/*enum role {
+	ROLE_NONE,
+	ROLE_CURSOR,
+	ROLE_DRAG_AND_DROP_ICON,
+	ROLE_SUBSURFACE,
+	ROLE_XDG_POPUP,
+	ROLE_XDG_TOPLEVEL
+}
+
+enum {
+	BASE_ROLE_XDG_SURFACE
+
+}*/
+
 /*
  * The double-buffered state
  */
@@ -29,6 +43,8 @@ struct surface {
 	struct texture *texture;
 
 	struct wl_resource *frame;
+
+//	struct wl_resource *role_object;
 
 	struct wl_signal commit;
 };
