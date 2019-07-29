@@ -208,8 +208,8 @@ int gbm_setup(struct screen *S, bool dmabuf_mod) {
 	}
 
 	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
-	if (!dmabuf_mod)
-		flags |= GBM_BO_USE_LINEAR;
+/*	if (!dmabuf_mod) XXX: otherwise GBM creates a bad bo for scanout
+		flags |= GBM_BO_USE_LINEAR;*/
 
 	int ret = gbm_device_is_format_supported(S->gbm_device,
 	GBM_BO_FORMAT_XRGB8888, flags);
@@ -221,6 +221,10 @@ int gbm_setup(struct screen *S, bool dmabuf_mod) {
 	struct box screen_size = screen_get_dimensions(S);
 	S->gbm_bo = gbm_bo_create(S->gbm_device, screen_size.width,
 	screen_size.height, GBM_BO_FORMAT_XRGB8888, flags);
+/*	uint64_t modifier = I915_FORMAT_MOD_X_TILED;
+	S->gbm_bo = gbm_bo_create_with_modifiers(S->gbm_device,
+			screen_size.width, screen_size.height,
+			GBM_BO_FORMAT_XRGB8888, &modifier, 1);*/
 	if (!S->gbm_bo) {
 		fprintf(stderr, "gbm_bo_create failed\n");
 		return 1;
@@ -349,7 +353,7 @@ uint32_t format, int fd, int stride, int offset, uint64_t modifier) {
 	i = !i;
 }
 
-void screen_post(struct screen *S) {
+void screen_post(struct screen *S, int fence_fd) {
 	drmModeAtomicReq *req = drmModeAtomicAlloc();
 	struct gbm_bo *bo = S->gbm_bo;
 	uint32_t bo_width = gbm_bo_get_width(bo);
@@ -365,15 +369,10 @@ void screen_post(struct screen *S) {
 		bo_offsets[j] = gbm_bo_get_offset(bo, j);
 		// KMS requires all BO planes to have the same modifier
 		bo_modifiers[j] = gbm_bo_get_modifier(bo);
-		errlog("%d", bo_handles[j]);
-		errlog("%d", bo_strides[j]);
-		errlog("%d", bo_offsets[j]);
-		errlog("ciccioc %d", bo_modifiers[j] == I915_FORMAT_MOD_X_TILED);
 	}
 
 //	uint32_t handle = gbm_bo_get_handle(bo).u32;
 	uint32_t bo_format = gbm_bo_get_format(bo);
-		errlog("%d %d %d", bo_format, DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888);
 
 /*	if (drmModeAddFB2WithModifiers(S->gpu_fd, width, height, COLOR_DEPTH, BIT_PER_PIXEL,
 	stride, handle, &S->fb_id[i])) {*/
@@ -390,7 +389,7 @@ void screen_post(struct screen *S) {
 	DRM_MODE_ATOMIC_NONBLOCK, S))
 	perror("atomic commit failed");
 	else {
-	fprintf(stderr, "atomic commit success\n");
+//	fprintf(stderr, "atomic commit success\n");
 //	if (fb_id)
 //	drmModeRmFB(S->gpu_fd, fb_id);
 	}
@@ -496,6 +495,9 @@ struct props find_prop_ids(int fd, uint32_t plane_id, uint32_t conn_id) {
 			obj_props->prop_values[i]);
 		if (!strcmp(prop->name, "CRTC_H"))
 			errlog("CRTC_H: %d %"PRIu64"", prop->prop_id,
+			obj_props->prop_values[i]);
+		if (!strcmp(prop->name, "IN_FENCE_FD"))
+			errlog("IN_FENCE_FD: %d %"PRIu64"", prop->prop_id,
 			obj_props->prop_values[i]);
 		drmModeFreeProperty(prop);
 	}

@@ -7,6 +7,8 @@
 #include <vulkan/vulkan.h>
 #include <util/log.h>
 
+const bool DEBUG = false;
+
 struct global {
 	bool dmabuf_mod;
 };
@@ -22,6 +24,7 @@ VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
 }
 
 static PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerProperties = 0;
+static PFN_vkGetFenceFdKHR vkGetFenceFd = 0;
 
 static int compare_ext_names(const void *a_, const void *b_) {
 	const VkExtensionProperties *a = a_;
@@ -54,6 +57,7 @@ VkInstance create_instance(bool *dmabuf, bool *dmabuf_mod) {
 	check_ext(n_ext, ext_p, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 	*dmabuf = check_ext(n_ext, ext_p, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME);
 	*dmabuf_mod = *dmabuf;
 
 	const char *enabled_ext_none[] = {
@@ -63,7 +67,8 @@ VkInstance create_instance(bool *dmabuf, bool *dmabuf_mod) {
 	const char *enabled_ext_dmabuf[] = {
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 		VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
-		VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME
+		VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME
 	};
 
 	uint32_t enabled_ext_count = 0;
@@ -93,8 +98,8 @@ VkInstance create_instance(bool *dmabuf, bool *dmabuf_mod) {
 	const char *layers[] = {"VK_LAYER_KHRONOS_validation"};
 	VkInstanceCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-		.pNext = &createInfo2,
-		.enabledLayerCount = sizeof(layers)/sizeof(char*),
+		.pNext = DEBUG ? &createInfo2 : NULL,
+		.enabledLayerCount = DEBUG ? sizeof(layers)/sizeof(char*) : 0,
 		.ppEnabledLayerNames = layers,
 		.enabledExtensionCount = enabled_ext_count,
 		.ppEnabledExtensionNames = enabled_ext
@@ -109,10 +114,15 @@ VkInstance create_instance(bool *dmabuf, bool *dmabuf_mod) {
 	(PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(inst,
 	"vkCreateDebugUtilsMessengerEXT");
 	VkDebugUtilsMessengerEXT debugMessenger;
-	vkCreateDebugUtilsMessenger(inst, &createInfo2, 0, &debugMessenger);
+	if (DEBUG)
+		vkCreateDebugUtilsMessenger(inst, &createInfo2, 0, &debugMessenger);
+
 	vkGetMemoryHostPointerProperties =
 	(PFN_vkGetMemoryHostPointerPropertiesEXT) vkGetInstanceProcAddr(inst,
 	"vkGetMemoryHostPointerPropertiesEXT");
+
+	vkGetFenceFd = (PFN_vkGetFenceFdKHR) vkGetInstanceProcAddr(inst,
+	"vkGetFenceFdKHR");
 
 	return inst;
 }
@@ -137,6 +147,8 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 	*dmabuf = check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME);
+	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_FENCE_EXTENSION_NAME);
+	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME);
 	*dmabuf_mod = *dmabuf;
 	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_KHR_BIND_MEMORY_2_EXTENSION_NAME);
 	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
@@ -148,7 +160,9 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 	const char *enabled_ext_dmabuf[] = {
 		VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
-		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME
+		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_FENCE_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME
 	};
 
 	const char *enabled_ext_dmabuf_mod[] = {
@@ -516,6 +530,7 @@ VkQueue queue;
 VkCommandPool command_pool;
 VkCommandBuffer commands[2] = {0,0};
 VkImage screen_image;
+VkFence screen_fence;
 
 
 int vulkan_init(bool *dmabuf, bool *dmabuf_mod) {
@@ -604,9 +619,7 @@ uint32_t format, uint8_t *data) {
 	VkBuffer buffer = create_buffer(buffer_size, &mem, device);
 	void *dest;
 	vkMapMemory(device, mem, 0, buffer_size, 0, &dest);
-	errlog("MEMCPY START");
 	memcpy(dest, data, (size_t) buffer_size);
-	errlog("MEMCPY DONE");
 	vkUnmapMemory(device, mem);
 
 	commands[1] = record_command_copy3(device, command_pool, buffer,
@@ -621,10 +634,8 @@ uint32_t format, uint8_t *data) {
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
 		};
 	vkCreateFence(device, &info, NULL, &fence);
-	errlog("COPY START");
 	vkQueueSubmit(queue, 1, &submitInfo, fence);
 	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-	errlog("COPY DONE");
 	vkResetFences(device, 1, &fence);
 
 	vkDestroyBuffer(device, buffer, NULL);
@@ -634,21 +645,14 @@ uint32_t format, uint8_t *data) {
 int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) {
 	fd = dup(fd); // otherwise I can't import the same fd again
 
-VkImage image;
-VkDeviceMemory memory;
-	if (i == 1) {
+	VkImage image;
+	VkDeviceMemory memory;
 	image = create_image(width, height, stride, mod, device); //TODO
 	memory = import_memory(fd, stride*height, device);
 	bind_image_memory(device, image, memory);
 
 		commands[1] = record_command_copy(device, command_pool, image,
 		screen_image, width, height);
-	} else {
-		screen_image = create_image(width, height, stride, mod, device);
-		VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
-		bind_image_memory(device, screen_image, screen_memory);
-		commands[0] = record_command_clear(device, command_pool, screen_image);
-	}
 
 	VkSubmitInfo submitInfo = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -660,16 +664,12 @@ VkDeviceMemory memory;
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
 		};
 	vkCreateFence(device, &info, NULL, &fence);
-	errlog("COPY START");
 	vkQueueSubmit(queue, 1, &submitInfo, fence);
 	vkWaitForFences(device, 1, &fence, VK_TRUE, 100000000);
-	errlog("COPY DONE");
 	vkResetFences(device, 1, &fence);
 
-	if (i == 1) {
-		vkDestroyImage(device, image, NULL);
-		vkFreeMemory(device, memory, NULL);
-		}
+	vkDestroyImage(device, image, NULL);
+	vkFreeMemory(device, memory, NULL);
 
 	close(fd);
 
@@ -680,4 +680,33 @@ VkDeviceMemory memory;
 //	vkDestroyInstance(instance, NULL);
 
 	return EXIT_SUCCESS;
+}
+
+void vulkan_create_screen_image(int fd, int width, int height, int stride, uint64_t mod) {
+	screen_image = create_image(width, height, stride, mod, device);
+	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
+	bind_image_memory(device, screen_image, screen_memory);
+	commands[0] = record_command_clear(device, command_pool, screen_image);
+
+	VkSubmitInfo submitInfo = {
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = commands
+	};
+	VkFenceCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
+	};
+	vkCreateFence(device, &info, NULL, &screen_fence);
+
+	int fence_fd;
+	VkFenceGetFdInfoKHR getFdInfo = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_GET_FD_INFO_KHR,
+		.pNext = 0,
+		.fence = screen_fence,
+		.handleType = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT
+	};
+
+	vkGetFenceFd(device, &getFdInfo, &fence_fd);
+	vkQueueSubmit(queue, 1, &submitInfo, screen_fence);
+//	vkResetFences(device, 1, &fence);
 }

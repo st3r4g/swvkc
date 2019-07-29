@@ -298,9 +298,9 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 
 	// maybe move to screen
-	struct box box= screen_get_dimensions(server->screen);
-	vulkan_main(0,screen_get_bo_fd(server->screen), box.width, box.height,
-	screen_get_bo_stride(server->screen),
+	struct box box = screen_get_dimensions(server->screen);
+	vulkan_create_screen_image(screen_get_bo_fd(server->screen), box.width,
+	box.height, screen_get_bo_stride(server->screen),
 	screen_get_bo_modifier(server->screen));
 
 	server->display = wl_display_create();
@@ -349,7 +349,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	screen_post(server->screen);
+	screen_post(server->screen, 0);
 
 	wl_display_run(D);
 

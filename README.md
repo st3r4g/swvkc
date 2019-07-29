@@ -4,9 +4,13 @@ but efficient. Compositing is done by importing the clients video buffers into
 Vulkan and copying them onto the screen buffer.
 
 # Current status
+* Importing memory between Vulkan and DRM/GBM is difficult without the
+  `VK_EXT_image_drm_format_modifier` extension. A working implementation for the
+  intel vulkan driver exists but has not been merged yet in mesa.
 * The mechanism to import both shm and dma buffers into Vulkan has been quickly
-  sketched, now I'm trying to make it more robust (some assumptions about the
-  buffer formats should be removed too).
+  sketched, but it needs to be made more robust (some assumptions about the
+  buffer formats should be removed too). Addressing this once the issue above is
+  solved.
 * The Wayland protocol has been implemented partially so only simple specific
   clients work at the moment. I'm currently interested in the buffer sharing
   mechanism and all the interactions between DRM, GBM and Vulkan.
