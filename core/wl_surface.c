@@ -1,24 +1,12 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include <core/wl_surface.h>
+#include <core/wl_surface_staged_field.h>
+#include <util/log.h>
+
 #include <wayland-server-protocol.h>
 
-#include <util/log.h>
-#include <core/wl_surface.h>
-#include <extensions/linux-dmabuf-unstable-v1/wl_buffer_dmabuf.h>
-#include <backend/screen.h>
-#include <server.h>
-
 #include <stdlib.h>
-
-enum staged_field {
-	BUFFER = 1 << 0,
-	DAMAGE = 1 << 1,
-	OPAQUE_REGION = 1 << 2,
-	INPUT_REGION = 1 << 3,
-	BUFFER_TRANSFORM = 1 << 4,
-	BUFFER_SCALE = 1 << 5,
-	BUFFER_DAMAGE = 1 << 6
-};
 
 static void destroy(struct wl_client *client, struct wl_resource
 *resource) {

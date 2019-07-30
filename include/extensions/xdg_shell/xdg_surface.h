@@ -16,9 +16,12 @@ struct xdg_surface0 {
 	struct xdg_surface_state0 *pending, *current;
 	struct wl_listener commit;
 	struct wl_list link;
+
+	struct wl_signal contents_update;
 };
 
 struct xdg_surface0 *xdg_surface_new(struct wl_resource *resource, struct
-wl_resource *surface_resource, struct server *server);
+wl_resource *surface_resource, struct server *server, struct wl_listener
+*xdg_surface_commit_listener);
 
 #endif

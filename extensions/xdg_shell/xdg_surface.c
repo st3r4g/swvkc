@@ -6,14 +6,11 @@
 #include <wayland-server-protocol.h> // Just for one event
 #include <xdg-shell-server-protocol.h>
 #include <core/wl_surface.h>
+#include <core/wl_surface_staged_field.h>
 #include <extensions/xdg_shell/xdg_surface.h>
 #include <extensions/xdg_shell/xdg_toplevel.h>
-#include <extensions/linux-dmabuf-unstable-v1/wl_buffer_dmabuf.h>
 #include <util/log.h>
 #include <util/util.h>
-#include <backend/screen.h>
-#include <backend/vulkan.h>
-#include <server.h>
 
 /*static enum wl_iterator_result keyboard_set(struct wl_resource *resource,
 void *user_data) {
@@ -73,33 +70,6 @@ static const struct xdg_surface_interface impl = {
 	.ack_configure = ack_configure
 };
 
-void dmabuf(struct wl_resource *buffer) {
-	uint32_t width = wl_buffer_dmabuf_get_width(buffer);
-	uint32_t height = wl_buffer_dmabuf_get_height(buffer);
-//	uint32_t format = wl_buffer_dmabuf_get_format(buffer);
-	int fd = wl_buffer_dmabuf_get_fd(buffer);
-	int stride = wl_buffer_dmabuf_get_stride(buffer);
-//	int offset = wl_buffer_dmabuf_get_offset(buffer);
-	uint64_t mod = wl_buffer_dmabuf_get_mod(buffer);
-	// 1) TODO Copy window buffer to screen
-	// 2) schedule pageflip with new screen content
-	/*screen_post_direct(server_get_screen(surface->server),
-	width, height, format, fd, stride, offset, mod);*/
-	vulkan_main(1, fd, width, height, stride, mod);
-}
-
-void shmbuf(struct wl_resource *buffer) {
-	struct wl_shm_buffer *shm_buffer = wl_shm_buffer_get(buffer);
-	uint32_t width = wl_shm_buffer_get_width(shm_buffer);
-	uint32_t height = wl_shm_buffer_get_height(shm_buffer);
-	uint32_t stride = wl_shm_buffer_get_stride(shm_buffer);
-	uint32_t format = wl_shm_buffer_get_format(shm_buffer);
-	uint8_t *data = wl_shm_buffer_get_data(shm_buffer);
-	wl_shm_buffer_begin_access(shm_buffer);
-	vulkan_render_shm_buffer(width, height, stride, format, data);
-	wl_shm_buffer_end_access(shm_buffer);
-}
-
 static void commit_notify(struct wl_listener *listener, void *data) {
 	struct xdg_surface0 *xdg_surface;
 	xdg_surface = wl_container_of(listener, xdg_surface, commit);
@@ -112,23 +82,8 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 	current->window_geometry.height = pending->window_geometry.height;
 	
 	struct surface *surface = data;
-		if (surface->current->buffer && surface->staged & (1 << 0) && server_surface_is_focused(xdg_surface)) {
-			struct wl_resource *buffer = surface->current->buffer;
-			if (wl_buffer_is_dmabuf(buffer))
-				dmabuf(buffer);
-			else
-				shmbuf(buffer);
-			screen_post(server_get_screen(surface->server), 0);
-//			NEEDED, screen refresh (scanout) happens automatically
-//			from the currently bound buffer. Will be needed for
-//			double buffering
-			wl_buffer_send_release(buffer);
-		} else if (surface->current->buffer && surface->staged & (1 << 0)){
-			struct wl_resource *buffer = surface->current->buffer;
-			wl_buffer_send_release(buffer);
-//			surface->texture = 0, buf_w = 0, buf_h = 0;
-		}
-	
+	if (surface->staged & BUFFER)
+		wl_signal_emit(&xdg_surface->contents_update, (void*)xdg_surface);
 }
 
 static void xdg_surface_free(struct wl_resource *resource) {
@@ -139,7 +94,8 @@ static void xdg_surface_free(struct wl_resource *resource) {
 }
 
 struct xdg_surface0 *xdg_surface_new(struct wl_resource *resource, struct
-wl_resource *surface_resource, struct server *server) {
+wl_resource *surface_resource, struct server *server, struct wl_listener
+*xdg_surface_contents_update_listener) {
 	struct surface *surface = wl_resource_get_user_data(surface_resource);
 	struct xdg_surface0 *xdg_surface = calloc(1, sizeof(struct
 	xdg_surface0));
@@ -148,6 +104,9 @@ wl_resource *surface_resource, struct server *server) {
 	xdg_surface->pending = calloc(1, sizeof(struct xdg_surface_state0));
 	xdg_surface->current = calloc(1, sizeof(struct xdg_surface_state0));
 	xdg_surface->surface = surface_resource;
+	wl_signal_init(&xdg_surface->contents_update);
+
+	wl_signal_add(&xdg_surface->contents_update, xdg_surface_contents_update_listener);
 
 	xdg_surface->commit.notify = commit_notify;
 	wl_signal_add(&surface->commit, &xdg_surface->commit);

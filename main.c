@@ -16,6 +16,7 @@
 #include <legacy_wl_drm.h> // legacy
 #include <backend/input.h>
 #include <backend/screen.h>
+#include <backend/vulkan.h>
 #include <util/log.h>
 #include <core/compositor.h>
 #include <core/data_device_manager.h>
@@ -28,6 +29,7 @@
 #include <extensions/xdg_shell/xdg_surface.h>
 #include <extensions/xdg_shell/xdg_toplevel.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
+#include <extensions/linux-dmabuf-unstable-v1/wl_buffer_dmabuf.h>
 #include <extensions/fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.h>
 #include <util/box.h>
 #include <util/util.h>
@@ -47,6 +49,11 @@ struct server {
 	struct wl_list seat_list;
 
 	struct wl_list xdg_surface_list;
+
+/*
+ * Listeners for events produced by Wayland objects
+ */
+	struct wl_listener xdg_surface_contents_update_listener;
 };
 
 struct server *server;
@@ -58,6 +65,59 @@ struct window {
 
 struct wl_list window_list;
 struct xdg_toplevel_data *focused;
+
+void dmabuf(struct wl_resource *buffer) {
+	uint32_t width = wl_buffer_dmabuf_get_width(buffer);
+	uint32_t height = wl_buffer_dmabuf_get_height(buffer);
+//	uint32_t format = wl_buffer_dmabuf_get_format(buffer);
+	int fd = wl_buffer_dmabuf_get_fd(buffer);
+	int stride = wl_buffer_dmabuf_get_stride(buffer);
+//	int offset = wl_buffer_dmabuf_get_offset(buffer);
+	uint64_t mod = wl_buffer_dmabuf_get_mod(buffer);
+	// 1) TODO Copy window buffer to screen
+	// 2) schedule pageflip with new screen content
+	/*screen_post_direct(server_get_screen(surface->server),
+	width, height, format, fd, stride, offset, mod);*/
+	vulkan_main(1, fd, width, height, stride, mod);
+}
+
+void shmbuf(struct wl_resource *buffer) {
+	struct wl_shm_buffer *shm_buffer = wl_shm_buffer_get(buffer);
+	uint32_t width = wl_shm_buffer_get_width(shm_buffer);
+	uint32_t height = wl_shm_buffer_get_height(shm_buffer);
+	uint32_t stride = wl_shm_buffer_get_stride(shm_buffer);
+	uint32_t format = wl_shm_buffer_get_format(shm_buffer);
+	uint8_t *data = wl_shm_buffer_get_data(shm_buffer);
+	wl_shm_buffer_begin_access(shm_buffer);
+	vulkan_render_shm_buffer(width, height, stride, format, data);
+	wl_shm_buffer_end_access(shm_buffer);
+}
+
+/*
+ * Handle events produced by Wayland objects: `object`_`event`_notify
+ */
+
+void xdg_surface_contents_update_notify(struct wl_listener *listener, void *data) {
+	struct server *server;
+	server = wl_container_of(listener, server,
+	 xdg_surface_contents_update_listener);
+
+	struct xdg_surface0 *xdg_surface = data;
+	struct surface *surface = wl_resource_get_user_data(xdg_surface->surface);
+
+	if (surface->current->buffer && server_surface_is_focused(xdg_surface)) {
+		struct wl_resource *buffer = surface->current->buffer;
+		if (wl_buffer_is_dmabuf(buffer))
+			dmabuf(buffer);
+		else
+			shmbuf(buffer);
+		screen_post(server_get_screen(surface->server), 0);
+//			NEEDED, screen refresh (scanout) happens automatically
+//			from the currently bound buffer. Will be needed for
+//			double buffering
+		wl_buffer_send_release(buffer);
+	}
+}
 
 int strncmp_case(const char *_l, const char *_r, size_t n) {
 	const unsigned char *l=(void *)_l, *r=(void *)_r;
@@ -253,7 +313,8 @@ version, uint32_t id) {
 	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&xdg_wm_base_interface, version, id);
-	struct xdg_wm_base *xdg_wm_base = xdg_wm_base_new(resource, server);
+	struct xdg_wm_base *xdg_wm_base = xdg_wm_base_new(resource, server,
+	 &server->xdg_surface_contents_update_listener);
 	wl_list_insert(&server->xdg_wm_base_list, &xdg_wm_base->link);
 }
 
@@ -303,6 +364,9 @@ int main(int argc, char *argv[]) {
 //	wl_list_init(&server->xdg_shell_v6_list);
 
 	wl_list_init(&window_list);
+
+	server->xdg_surface_contents_update_listener.notify =
+	 xdg_surface_contents_update_notify;
 
 	bool dmabuf = false, dmabuf_mod = false;
 	vulkan_init(&dmabuf, &dmabuf_mod);

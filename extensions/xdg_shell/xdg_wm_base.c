@@ -21,7 +21,8 @@ static void get_xdg_surface(struct wl_client *client, struct wl_resource
 	struct xdg_wm_base *xdg_wm_base = wl_resource_get_user_data(resource);
 	struct wl_resource *xdg_surf_resource = wl_resource_create(client,
 	&xdg_surface_interface, 1, id);
-	xdg_surface_new(xdg_surf_resource, surface, xdg_wm_base->server);
+	xdg_surface_new(xdg_surf_resource, surface, xdg_wm_base->server,
+	 xdg_wm_base->xdg_surface_contents_update_listener);
 }
 
 static void pong(struct wl_client *client, struct wl_resource *resource,
@@ -37,9 +38,11 @@ static const struct xdg_wm_base_interface impl = {
 };
 
 struct xdg_wm_base *xdg_wm_base_new(struct wl_resource *resource, struct server
-*server) {
+*server, struct wl_listener *xdg_surface_contents_update_listener) {
 	struct xdg_wm_base *xdg_wm_base = calloc(1, sizeof(struct xdg_wm_base));
 	xdg_wm_base->server = server;
+	xdg_wm_base->xdg_surface_contents_update_listener =
+	 xdg_surface_contents_update_listener;
 	wl_list_init(&xdg_wm_base->xdg_toplevel_list); //remove
 	wl_list_init(&xdg_wm_base->xdg_popup_list); //remove
 	wl_resource_set_implementation(resource, &impl, xdg_wm_base, 0);

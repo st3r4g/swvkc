@@ -10,9 +10,11 @@ struct xdg_wm_base {
 	struct wl_list link;
 
 	struct server *server;
+
+	struct wl_listener *xdg_surface_contents_update_listener;
 };
 
 struct xdg_wm_base *xdg_wm_base_new(struct wl_resource *resource, struct server
-*server);
+*server, struct wl_listener *xdg_surface_contents_update_listener);
 
 #endif
