@@ -115,17 +115,6 @@ static void destroyed(struct wl_resource *resource) {
 
 // version 1
 
-char *get_a_name(struct wl_resource *resource) {
-	struct wl_client *client = wl_resource_get_client(resource);
-	pid_t pid;
-	uid_t uid;
-	gid_t gid;
-	wl_client_get_credentials(client, &pid, &uid, &gid);
-	char path[64];
-	sprintf(path, "/proc/%d/comm", pid);
-	return read_file(path);
-}
-
 void xdg_toplevel_new(struct wl_resource *resource, struct xdg_surface0
 *xdg_surface_data, struct server *server) {
 	struct xdg_toplevel_data *toplevel_data = calloc(1, sizeof(struct
@@ -136,7 +125,7 @@ void xdg_toplevel_new(struct wl_resource *resource, struct xdg_surface0
 	wl_resource_get_user_data(xdg_surface_data->surface);
 	toplevel_data->commit.notify = commit_notify;
 	wl_signal_add(&surface_data->commit, &toplevel_data->commit);
-	toplevel_data->app_id = get_a_name(resource);
+	toplevel_data->app_id = get_a_name(wl_resource_get_client(resource));
 	wl_resource_set_implementation(resource, &impl, toplevel_data,
 	destroyed);
 	server_window_create(toplevel_data);

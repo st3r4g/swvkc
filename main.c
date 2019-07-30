@@ -28,6 +28,7 @@
 #include <extensions/xdg_shell/xdg_surface.h>
 #include <extensions/xdg_shell/xdg_toplevel.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
+#include <extensions/fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.h>
 #include <util/box.h>
 #include <util/util.h>
 
@@ -275,6 +276,22 @@ version, uint32_t id) {
 
 static void zwp_fullscreen_shell_v1_bind(struct wl_client *client, void *data, uint32_t
 version, uint32_t id) {
+	struct wl_resource *resource = wl_resource_create(client,
+	&zwp_fullscreen_shell_v1_interface, version, id);
+	zwp_fullscreen_shell_v1_new(resource);
+}
+
+// For debugging
+static bool global_filter(const struct wl_client *client, const struct wl_global
+*global, void *data) {
+	char *client_name = get_a_name((struct wl_client*)client);
+	bool condition = wl_global_get_interface(global) == &xdg_wm_base_interface;
+	if (!strcmp(client_name, "weston-simple-d") && condition) {
+		free(client_name);
+		return false;
+	}
+	free(client_name);
+	return true;
 }
 
 int main(int argc, char *argv[]) {
@@ -323,8 +340,10 @@ int main(int argc, char *argv[]) {
 	if (dmabuf)
 		wl_global_create(D, &zwp_linux_dmabuf_v1_interface, 3,
 		&dmabuf_mod, zwp_linux_dmabuf_v1_bind);
-/*	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
-	zwp_fullscreen_shell_v1_bind);*/
+	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
+	zwp_fullscreen_shell_v1_bind);
+
+	wl_display_set_global_filter(D, global_filter, 0);
 
 // Can I move at the beginning of the program (still enter key stucks?)
 	server->input = input_setup();

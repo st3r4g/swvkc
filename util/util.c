@@ -51,3 +51,13 @@ char *read_file(const char *path)
 	line[len-3] = '\0';
 	return line;
 }
+
+char *get_a_name(struct wl_client *client) {
+	pid_t pid;
+	uid_t uid;
+	gid_t gid;
+	wl_client_get_credentials(client, &pid, &uid, &gid);
+	char path[64];
+	sprintf(path, "/proc/%d/comm", pid);
+	return read_file(path);
+}
