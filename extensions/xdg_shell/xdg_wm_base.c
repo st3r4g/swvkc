@@ -3,7 +3,6 @@
 #include <xdg-shell-server-protocol.h>
 #include <wayland-server-protocol.h> //TODO: remove
 #include <extensions/xdg_shell/xdg_wm_base.h>
-#include <extensions/xdg_shell/xdg_surface.h>
 #include <server.h>
 #include <stdlib.h>
 
@@ -22,7 +21,7 @@ static void get_xdg_surface(struct wl_client *client, struct wl_resource
 	struct wl_resource *xdg_surf_resource = wl_resource_create(client,
 	&xdg_surface_interface, 1, id);
 	xdg_surface_new(xdg_surf_resource, surface, xdg_wm_base->server,
-	 xdg_wm_base->xdg_surface_contents_update_listener);
+	 xdg_wm_base->xdg_shell_events.xdg_surface_contents_update, xdg_wm_base->xdg_shell_events.user_data);
 }
 
 static void pong(struct wl_client *client, struct wl_resource *resource,
@@ -38,11 +37,10 @@ static const struct xdg_wm_base_interface impl = {
 };
 
 struct xdg_wm_base *xdg_wm_base_new(struct wl_resource *resource, struct server
-*server, struct wl_listener *xdg_surface_contents_update_listener) {
+*server, struct xdg_shell_events xdg_shell_events) {
 	struct xdg_wm_base *xdg_wm_base = calloc(1, sizeof(struct xdg_wm_base));
 	xdg_wm_base->server = server;
-	xdg_wm_base->xdg_surface_contents_update_listener =
-	 xdg_surface_contents_update_listener;
+	xdg_wm_base->xdg_shell_events = xdg_shell_events;
 	wl_list_init(&xdg_wm_base->xdg_toplevel_list); //remove
 	wl_list_init(&xdg_wm_base->xdg_popup_list); //remove
 	wl_resource_set_implementation(resource, &impl, xdg_wm_base, 0);

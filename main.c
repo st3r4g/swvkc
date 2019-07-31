@@ -50,11 +50,6 @@ struct server {
 	struct wl_list seat_list;
 
 	struct wl_list xdg_surface_list;
-
-/*
- * Listeners for events produced by Wayland objects
- */
-	struct wl_listener xdg_surface_contents_update_listener;
 };
 
 struct server *server;
@@ -102,12 +97,8 @@ void shmbuf(struct wl_resource *buffer) {
  * Handle events produced by Wayland objects: `object`_`event`_notify
  */
 
-void xdg_surface_contents_update_notify(struct wl_listener *listener, void *data) {
-	struct server *server;
-	server = wl_container_of(listener, server,
-	 xdg_surface_contents_update_listener);
-
-	struct xdg_surface0 *xdg_surface = data;
+void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *user_data) {
+	struct server *server = user_data;
 	struct surface *surface = wl_resource_get_user_data(xdg_surface->surface);
 
 	if (surface->current->buffer && server_surface_is_focused(xdg_surface)) {
@@ -319,8 +310,12 @@ version, uint32_t id) {
 	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&xdg_wm_base_interface, version, id);
+	struct xdg_shell_events xdg_shell_events = {
+		.xdg_surface_contents_update = xdg_surface_contents_update_notify,
+		.user_data = server
+	};
 	struct xdg_wm_base *xdg_wm_base = xdg_wm_base_new(resource, server,
-	 &server->xdg_surface_contents_update_listener);
+	 xdg_shell_events);
 	wl_list_insert(&server->xdg_wm_base_list, &xdg_wm_base->link);
 }
 
@@ -370,9 +365,6 @@ int main(int argc, char *argv[]) {
 //	wl_list_init(&server->xdg_shell_v6_list);
 
 	wl_list_init(&window_list);
-
-	server->xdg_surface_contents_update_listener.notify =
-	 xdg_surface_contents_update_notify;
 
 	bool dmabuf = false, dmabuf_mod = false;
 	vulkan_init(&dmabuf, &dmabuf_mod);
