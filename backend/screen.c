@@ -21,9 +21,20 @@ int flag = 0;
 //static const int COLOR_DEPTH = 24;
 //static const int BIT_PER_PIXEL = 32;
 
+/* A bit wrong because different planes could have different properties */
 struct props {
 	struct {
+		uint32_t type;
+		uint32_t src_x;
+		uint32_t src_y;
+		uint32_t src_w;
+		uint32_t src_h;
+		uint32_t crtc_x;
+		uint32_t crtc_y;
+		uint32_t crtc_w;
+		uint32_t crtc_h;
 		uint32_t fb_id;
+		uint32_t in_fence_fd;
 		uint32_t crtc_id;
 	} plane;
 
@@ -36,10 +47,14 @@ struct screen {
 	// DRM
 	int gpu_fd;
 	uint32_t plane_id;
+	uint32_t overlay_plane_id;
+	uint32_t crtc_id;
 	uint32_t props_plane_fb_id;
 	uint32_t old_fb_id;
 	uint32_t fb_id[2];
 	drmModeAtomicReq *req;
+
+	struct props props;
 
 	// GBM
 	struct gbm_device *gbm_device;
@@ -105,6 +120,50 @@ void simple_modeset(struct screen *S, uint32_t crtc_id) {
 			S->plane_id = plane->plane_id;
 			S->old_fb_id = plane->fb_id;
 		}
+		drmModeFreePlane(plane);
+	}
+	drmModeFreePlaneResources(plane_res);
+}
+
+int crtc_index_from_id(int fd, uint32_t crtc_id) {
+	drmModeRes *res = drmModeGetResources(fd);
+	for (int i=0; i<res->count_crtcs; i++) {
+		if (res->crtcs[i] == crtc_id) {
+			drmModeFreeResources(res);
+			return i;
+		}
+	}
+	drmModeFreeResources(res);
+	return -1;
+}
+
+/* replacement for simple_modeset */
+void planes(struct screen *S, uint32_t crtc_id) {
+	drmModePlaneRes *plane_res = drmModeGetPlaneResources(S->gpu_fd);
+	for (size_t i=0; i<plane_res->count_planes; i++) {
+		drmModePlane *plane = drmModeGetPlane(S->gpu_fd, plane_res->planes[i]);
+		if (!(plane->possible_crtcs & (1 << crtc_index_from_id(S->gpu_fd, crtc_id)))) {
+			drmModeFreePlane(plane);
+			continue;
+		}
+		drmModeObjectProperties *obj_props;
+		obj_props = drmModeObjectGetProperties(S->gpu_fd, plane->plane_id,
+		DRM_MODE_OBJECT_PLANE);
+		for (size_t j=0; j<obj_props->count_props; j++) {
+			drmModePropertyRes *prop = drmModeGetProperty(S->gpu_fd,
+			obj_props->props[j]);
+			if (!strcmp(prop->name, "type")) {
+				if (obj_props->prop_values[j] == DRM_PLANE_TYPE_PRIMARY) {
+					errlog("am primary %d", plane->plane_id);
+					S->plane_id = plane->plane_id;
+				} else if (obj_props->prop_values[j] == DRM_PLANE_TYPE_OVERLAY) {
+					errlog("am overlay %d", plane->plane_id);
+					S->overlay_plane_id = plane->plane_id;
+				}
+			}
+			drmModeFreeProperty(prop);
+		}
+		drmModeFreeObjectProperties(obj_props);
 		drmModeFreePlane(plane);
 	}
 	drmModeFreePlaneResources(plane_res);
@@ -189,10 +248,12 @@ int drm_setup(struct screen *S) {
 	errlog("vrefresh: %d, connected: %d\n", crtc->mode.vrefresh,
 	connected[n]->connector_id);
 
-	simple_modeset(S, crtc->crtc_id);
+	S->crtc_id = crtc->crtc_id;
+	simple_modeset(S, crtc->crtc_id); // TODO remove
+	planes(S, crtc->crtc_id);
 	drmModeFreeCrtc(crtc);
-	struct props props = find_prop_ids(S->gpu_fd, S->plane_id, connected[n]->connector_id);
-	S->props_plane_fb_id = props.plane.fb_id;
+	S->props = find_prop_ids(S->gpu_fd, S->plane_id, connected[n]->connector_id);
+	S->props_plane_fb_id = S->props.plane.fb_id;
 
 	errlog("%d %d %d", S->plane_id, S->props_plane_fb_id, S->old_fb_id);
 
@@ -258,99 +319,6 @@ void drm_handle_event(int fd) {
 		.page_flip_handler = page_flip_handler,
 	};
 	drmHandleEvent(fd, &ev_context);
-}
-
-void screen_post_direct(struct screen *S, uint32_t width, uint32_t height,
-uint32_t format, int fd, int stride, int offset, uint64_t modifier) {
-	errlog("flag %d", flag);
-	flag = 1;
-	static int i = 0;
-	drmModeAtomicReq *req = drmModeAtomicAlloc();
-	if (!req)
-		fprintf(stderr, "atomic allocation failed\n");
-
-	errlog("%d %d %d %d %d %d %d", width, height, format, fd, stride, offset, modifier);
-	struct gbm_import_fd_modifier_data buffer = {
-		.width = width,
-		.height = height,
-		.format = format,
-		.num_fds = 1,
-		.fds[0] = fd,
-		.strides[0] = stride,
-		.offsets[0] = offset,
-		.modifier = modifier
-	};
-	struct gbm_bo *bo = gbm_bo_import(S->gbm_device,
-	GBM_BO_IMPORT_FD_MODIFIER, &buffer, GBM_BO_USE_SCANOUT);
-
-	if (!bo) {
-		perror("import");
-	}
-
-	uint32_t bo_width = gbm_bo_get_width(bo);
-	uint32_t bo_height = gbm_bo_get_height(bo);
-		errlog("%d", bo_width);
-		errlog("%d", bo_height);
-
-	uint32_t bo_handles[4] = {0};
-	uint32_t bo_strides[4] = {0};
-	uint32_t bo_offsets[4] = {0};
-	uint64_t bo_modifiers[4] = {0};
-	for (int j = 0; j < gbm_bo_get_plane_count(bo); j++) {
-		bo_handles[j] = gbm_bo_get_handle_for_plane(bo, j).u32;
-		bo_strides[j] = gbm_bo_get_stride_for_plane(bo, j);
-		bo_offsets[j] = gbm_bo_get_offset(bo, j);
-		// KMS requires all BO planes to have the same modifier
-		bo_modifiers[j] = gbm_bo_get_modifier(bo);
-		errlog("%d", bo_handles[j]);
-		errlog("%d", bo_strides[j]);
-		errlog("%d", bo_offsets[j]);
-		errlog("ciccioc %d", bo_modifiers[j] == I915_FORMAT_MOD_Y_TILED);
-	}
-
-//	uint32_t handle = gbm_bo_get_handle(bo).u32;
-	uint32_t bo_format = format;
-		errlog("%d %d %d", bo_format, DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888);
-
-/*	if (drmModeAddFB2WithModifiers(S->gpu_fd, width, height, COLOR_DEPTH, BIT_PER_PIXEL,
-	stride, handle, &S->fb_id[i])) {*/
-	if (drmModeAddFB2WithModifiers(S->gpu_fd, bo_width, bo_height, bo_format,
-	bo_handles, bo_strides, bo_offsets, bo_modifiers, &S->fb_id[i], DRM_MODE_FB_MODIFIERS)) {
-		perror("AddFB");
-	}
-
-	printf("%d %d\n", S->fb_id[i], S->fb_id[!i]);
-
-	if (drmModeAtomicAddProperty(req, S->plane_id,
-	S->props_plane_fb_id, S->fb_id[i]) < 0)
-		fprintf(stderr, "atomic add property failed\n");
-//	drmModeAtomicAddProperty(req, S->plane_id, 10, 1366 << 16); //W
-//	drmModeAtomicAddProperty(req, S->plane_id, 11, 768 << 16); //H
-//	drmModeAtomicAddProperty(req, S->plane_id, 12, 10); //W
-//	drmModeAtomicAddProperty(req, S->plane_id, 13, 10); //H
-//	drmModeAtomicAddProperty(req, S->plane_id, 14, 1366); //W
-//	drmModeAtomicAddProperty(req, S->plane_id, 15, 768); //H
-
-	errlog("Trying to post the new buffer");
-	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_ATOMIC_TEST_ONLY |
-	DRM_MODE_ATOMIC_ALLOW_MODESET, 0))
-	perror("test failed");
-	else {
-	fprintf(stderr, "test success\n");
-	}
-	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_PAGE_FLIP_EVENT |
-	DRM_MODE_ATOMIC_NONBLOCK, S))
-	perror("atomic commit failed");
-	else {
-	fprintf(stderr, "atomic commit success\n");
-	if (S->fb_id[!i])
-	drmModeRmFB(S->gpu_fd, S->fb_id[!i]);
-	}
-	drmModeAtomicFree(req);
-	errlog("Trying to post the new buffer 2");
-//	errlog("B");
-//	errlog("C");
-	i = !i;
 }
 
 void screen_post(struct screen *S, int fence_fd) {
@@ -424,6 +392,10 @@ struct box screen_get_dimensions(struct screen *S) {
 	return box;
 }
 
+bool screen_is_overlay_supported(struct screen *S) {
+	return S->overlay_plane_id > 0;
+}
+
 void screen_release(struct screen *S) {
 	drmModeAtomicReq *req = drmModeAtomicAlloc();
 	if (drmModeAtomicAddProperty(req, S->plane_id, S->props_plane_fb_id, S->old_fb_id) < 0)
@@ -480,25 +452,30 @@ struct props find_prop_ids(int fd, uint32_t plane_id, uint32_t conn_id) {
 	for (size_t i=0; i<obj_props->count_props; i++) {
 		drmModePropertyRes *prop = drmModeGetProperty(fd,
 		obj_props->props[i]);
+		if (!strcmp(prop->name, "type"))
+			props.plane.type = prop->prop_id;
+		if (!strcmp(prop->name, "SRC_X"))
+			props.plane.src_x = prop->prop_id;
+		if (!strcmp(prop->name, "SRC_Y"))
+			props.plane.src_y = prop->prop_id;
+		if (!strcmp(prop->name, "SRC_W"))
+			props.plane.src_w = prop->prop_id;
+		if (!strcmp(prop->name, "SRC_H"))
+			props.plane.src_h = prop->prop_id;
+		if (!strcmp(prop->name, "CRTC_X"))
+			props.plane.crtc_x = prop->prop_id;
+		if (!strcmp(prop->name, "CRTC_Y"))
+			props.plane.crtc_y = prop->prop_id;
+		if (!strcmp(prop->name, "CRTC_W"))
+			props.plane.crtc_w = prop->prop_id;
+		if (!strcmp(prop->name, "CRTC_H"))
+			props.plane.crtc_h = prop->prop_id;
 		if (!strcmp(prop->name, "FB_ID"))
 			props.plane.fb_id = prop->prop_id;
+		if (!strcmp(prop->name, "IN_FENCE_FD"))
+			props.plane.in_fence_fd = prop->prop_id;
 		if (!strcmp(prop->name, "CRTC_ID"))
 			props.plane.crtc_id = prop->prop_id;
-		if (!strcmp(prop->name, "SRC_W"))
-			errlog("SRC_W: %d %"PRIu64"", prop->prop_id,
-			obj_props->prop_values[i] >> 16);
-		if (!strcmp(prop->name, "SRC_H"))
-			errlog("SRC_W: %d %"PRIu64"", prop->prop_id,
-			obj_props->prop_values[i] >> 16);
-		if (!strcmp(prop->name, "CRTC_W"))
-			errlog("CRTC_W: %d %"PRIu64"", prop->prop_id,
-			obj_props->prop_values[i]);
-		if (!strcmp(prop->name, "CRTC_H"))
-			errlog("CRTC_H: %d %"PRIu64"", prop->prop_id,
-			obj_props->prop_values[i]);
-		if (!strcmp(prop->name, "IN_FENCE_FD"))
-			errlog("IN_FENCE_FD: %d %"PRIu64"", prop->prop_id,
-			obj_props->prop_values[i]);
 		drmModeFreeProperty(prop);
 	}
 	drmModeFreeObjectProperties(obj_props);

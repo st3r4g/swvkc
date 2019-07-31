@@ -11,6 +11,7 @@ Vulkan and copying them onto the screen buffer.
   sketched, but it needs to be made more robust (some assumptions about the
   buffer formats should be removed too). Addressing this once the issue above is
   solved.
+* Playing with overlay planes (bypassing Vulkan) in the meantime.
 * The Wayland protocol has been implemented partially so only simple specific
   clients work at the moment. I'm currently interested in the buffer sharing
   mechanism and all the interactions between DRM, GBM and Vulkan.

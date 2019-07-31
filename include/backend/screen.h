@@ -22,6 +22,7 @@ uint32_t screen_get_bo_stride(struct screen *);
 uint64_t screen_get_bo_modifier(struct screen *S);
 struct gbm_device *screen_get_gbm_device(struct screen *);
 struct box screen_get_dimensions(struct screen *S);
+bool screen_is_overlay_supported(struct screen *S);
 void screen_post_direct(struct screen *, uint32_t width, uint32_t height,
 uint32_t format, int fd, int stride, int offset, uint64_t modifier);
 void screen_post(struct screen *S, int fence_fd);

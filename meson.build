@@ -9,7 +9,7 @@ c = 'core/'
 u = 'util/'
 x = 'extensions/'
 
-src = [b+'input.c', b+'screen.c', b+'vulkan.c']
+src = [b+'input.c', b+'screen.c', b+'vulkan.c', b+'direct.c']
 src += [c+'compositor.c', c+'data_device_manager.c', c+'keyboard.c',
 	c+'output.c', c+'wl_pointer.c', c+'region.c', c+'seat.c',
 	c+'wl_subcompositor.c', c+'wl_subsurface.c', c+'wl_surface.c']

@@ -16,6 +16,7 @@
 #include <legacy_wl_drm.h> // legacy
 #include <backend/input.h>
 #include <backend/screen.h>
+#include <backend/direct.h>
 #include <backend/vulkan.h>
 #include <util/log.h>
 #include <core/compositor.h>
@@ -66,19 +67,23 @@ struct window {
 struct wl_list window_list;
 struct xdg_toplevel_data *focused;
 
-void dmabuf(struct wl_resource *buffer) {
+void dmabuf(struct wl_resource *buffer, struct screen *screen) {
 	uint32_t width = wl_buffer_dmabuf_get_width(buffer);
 	uint32_t height = wl_buffer_dmabuf_get_height(buffer);
-//	uint32_t format = wl_buffer_dmabuf_get_format(buffer);
+	uint32_t format = wl_buffer_dmabuf_get_format(buffer);
 	int fd = wl_buffer_dmabuf_get_fd(buffer);
 	int stride = wl_buffer_dmabuf_get_stride(buffer);
-//	int offset = wl_buffer_dmabuf_get_offset(buffer);
+	int offset = wl_buffer_dmabuf_get_offset(buffer);
 	uint64_t mod = wl_buffer_dmabuf_get_mod(buffer);
 	// 1) TODO Copy window buffer to screen
 	// 2) schedule pageflip with new screen content
 	/*screen_post_direct(server_get_screen(surface->server),
 	width, height, format, fd, stride, offset, mod);*/
-	vulkan_main(1, fd, width, height, stride, mod);
+	if (screen_is_overlay_supported(screen))
+		client_buffer_on_overlay(screen, width, height, format, fd,
+		 stride, offset, mod);
+	else
+		vulkan_main(1, fd, width, height, stride, mod);
 }
 
 void shmbuf(struct wl_resource *buffer) {
@@ -107,14 +112,15 @@ void xdg_surface_contents_update_notify(struct wl_listener *listener, void *data
 
 	if (surface->current->buffer && server_surface_is_focused(xdg_surface)) {
 		struct wl_resource *buffer = surface->current->buffer;
+		struct screen *screen = server_get_screen(server);
 		if (wl_buffer_is_dmabuf(buffer))
-			dmabuf(buffer);
+			dmabuf(buffer, screen);
 		else
 			shmbuf(buffer);
-		screen_post(server_get_screen(surface->server), 0);
+		if (!screen_is_overlay_supported(screen) || !wl_buffer_is_dmabuf(buffer))
+			screen_post(screen, 0);
 //			NEEDED, screen refresh (scanout) happens automatically
-//			from the currently bound buffer. Will be needed for
-//			double buffering
+//			from the currently bound buffer only in one GPU
 		wl_buffer_send_release(buffer);
 	}
 }
@@ -345,13 +351,13 @@ version, uint32_t id) {
 // For debugging
 static bool global_filter(const struct wl_client *client, const struct wl_global
 *global, void *data) {
-	char *client_name = get_a_name((struct wl_client*)client);
+/*	char *client_name = get_a_name((struct wl_client*)client);
 	bool condition = wl_global_get_interface(global) == &xdg_wm_base_interface;
 	if (!strcmp(client_name, "weston-simple-d") && condition) {
 		free(client_name);
 		return false;
 	}
-	free(client_name);
+	free(client_name);*/
 	return true;
 }
 

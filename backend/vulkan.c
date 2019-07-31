@@ -362,7 +362,8 @@ VkCommandBuffer record_command_clear(VkDevice dev, VkCommandPool pool, VkImage i
 	vkBeginCommandBuffer(cmdbuf, &infoBegin);
 
 	VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-	VkClearColorValue color = {{0.8984375f, 0.8984375f, 0.9765625f, 1.0f}};
+//	VkClearColorValue color = {{0.8984375f, 0.8984375f, 0.9765625f, 1.0f}};
+	VkClearColorValue color = {{0.0f, 0.0f, 0.0f, 1.0f}}; // wow boring
 	vkCmdClearColorImage(cmdbuf, img,
 	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &color, 1, &range);
 
