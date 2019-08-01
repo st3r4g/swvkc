@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <wayland-server-protocol.h>
 
@@ -14,6 +15,7 @@ static const struct wl_buffer_interface impl = {destroy};
 
 static void free_data(struct wl_resource *resource) {
 	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
+	close(data->fd);
 	free(data);
 }
 

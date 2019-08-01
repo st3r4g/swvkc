@@ -39,6 +39,8 @@
 
 #include <linux/input-event-codes.h>
 
+bool busy = false;
+
 struct server {
 	struct wl_display *display;
 
@@ -103,7 +105,12 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
 	struct server *server = user_data;
 	struct surface *surface = wl_resource_get_user_data(xdg_surface->surface);
 
-	if (surface->current->buffer && server_surface_is_focused(xdg_surface)) {
+/*
+ * XXX: Understand why contents are updated more than once per frame sometimes
+ *      (especially when the clients starts). `busy` prevents committing before
+ *      the results of the previous commit are displayed.
+ */
+	if (!busy && surface->current->buffer && server_surface_is_focused(xdg_surface)) {
 		struct wl_resource *buffer = surface->current->buffer;
 		struct screen *screen = server_get_screen(server);
 		if (wl_buffer_is_dmabuf(buffer))
@@ -114,6 +121,7 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
 			screen_post(screen, 0);
 //			NEEDED, screen refresh (scanout) happens automatically
 //			from the currently bound buffer only in one GPU
+		busy = true;
 	}
 }
 
@@ -236,6 +244,7 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 		struct surface *surface = wl_resource_get_user_data(surf_res);
 		wl_buffer_send_release(surface->current->buffer);
 	}
+	busy = false;
 	return 0;
 }
 
