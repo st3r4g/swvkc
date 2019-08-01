@@ -26,6 +26,8 @@ enum {
 
 struct dbuf_state {
 	struct wl_resource *buffer;
+/* need this because of how DRM OUT_FENCE_PTR works */
+	struct wl_resource *previous_buffer;
 	struct box damage;
 	struct box buffer_damage;
 	struct wl_resource *opaque_region;

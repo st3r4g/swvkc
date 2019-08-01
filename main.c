@@ -242,7 +242,8 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 	if (focused) {
 		struct wl_resource *surf_res = focused->xdg_surface_data->surface;
 		struct surface *surface = wl_resource_get_user_data(surf_res);
-		wl_buffer_send_release(surface->current->buffer);
+		if (surface->current->previous_buffer)
+			wl_buffer_send_release(surface->current->previous_buffer);
 	}
 	busy = false;
 	return 0;

@@ -43,6 +43,19 @@ memory
 7. Retrieve the bo handle to feed it to DRM
 `handle = gbm_bo_get_handle(bo).u32`
 
+## Explicit syncronization
+From https://www.collabora.com/news-and-blog/blog/2017/01/26/mainline-explicit-fencing-part-3/
+> On the other hand for the fences created by the kernel that are sent back to
+> userspace the OUT_FENCE_PTR property is used. It is a DRM CRTC property
+> because we only create one dma_fence per CRTC as all the buffers on it will be
+> scanned out at the same time. The kernel sends this fence back to userspace by
+> writing the fd number to the pointer provided in the OUT_FENCE_PTR property.
+> Note that, unlike from what Android did, when the fence signals it means the
+> previous buffer – the buffer removed from the screen – is free for reuse. On
+> Android when the signal was raised it meant the current buffer was freed.
+> However, the Android folks have patched SurfaceFlinger already to support the
+> Mainline semantics when using Explicit Fencing!
+
 ## TODO
 * Code cleanup
 * Investigate correct memory management and synchronization

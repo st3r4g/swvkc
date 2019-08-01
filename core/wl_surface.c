@@ -20,6 +20,7 @@ static void attach(struct wl_client *client, struct wl_resource
 		errlog("surface.attach called with nonzero x=%d y=%d", x, y);
 	struct surface *surface = wl_resource_get_user_data(resource);
 	surface->pending->buffer = buffer;
+	surface->pending->previous_buffer = surface->current->buffer;
 	surface->staged |= BUFFER;
 }
 
@@ -65,6 +66,7 @@ static void commit(struct wl_client *client, struct wl_resource
 // "On commit, a pending wl_buffer is applied first, and all other state second"
 	if (surface->staged & BUFFER) {
 		current->buffer = pending->buffer;
+		current->previous_buffer = pending->previous_buffer;
 //		renderer_delete_tex(surface->texture);
 //		uint32_t buf_w, buf_h;
 // "If wl_surface.attach is sent with a NULL wl_buffer, the following
