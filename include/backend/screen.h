@@ -12,7 +12,8 @@ struct screen;
  */
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
-unsigned int, void*), void *user_data, bool dmabuf_drm);
+unsigned int, void*), void *user_data, void (*listen_to_out_fence)(int, void*),
+void *user_data2, bool dmabuf_mod);
 
 void drm_handle_event(int fd);
 

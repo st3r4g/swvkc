@@ -15,7 +15,7 @@
 
 #include <util/log.h>
 
-int flag = 0;
+//int flag = 0;
 
 // GBM formats are either GBM_BO_FORMAT_XRGB8888 or GBM_BO_FORMAT_ARGB8888
 //static const int COLOR_DEPTH = 24;
@@ -41,6 +41,10 @@ struct props {
 	struct {
 		uint32_t crtc_id;
 	} conn;
+
+	struct {
+		uint32_t out_fence_ptr;
+	} crtc;
 };
 
 struct screen {
@@ -65,16 +69,22 @@ struct screen {
 	void (*vblank_notify)(int,unsigned int,unsigned int, unsigned int,
 	void*);
 	void *user_data;
+	// out_fence callback
+	void (*listen_to_out_fence)(int, void*);
+	void *user_data2;
 };
 
 int drm_setup(struct screen *);
 int gbm_setup(struct screen *, bool dmabuf_mod);
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
-unsigned int, void*), void *user_data, bool dmabuf_mod) {
+unsigned int, void*), void *user_data, void (*listen_to_out_fence)(int, void*),
+void *user_data2, bool dmabuf_mod) {
 	struct screen *screen = calloc(1, sizeof(struct screen));
 	screen->vblank_notify = vblank_notify;
 	screen->user_data = user_data;
+	screen->listen_to_out_fence = listen_to_out_fence;
+	screen->user_data2 = user_data2;
 	drm_setup(screen);
 	gbm_setup(screen, dmabuf_mod);
 
@@ -170,7 +180,7 @@ void planes(struct screen *S, uint32_t crtc_id) {
 }
 
 static int modeset_find_crtc(int fd, drmModeRes *res, drmModeConnector *conn);
-struct props find_prop_ids(int fd, uint32_t plane_id, uint32_t conn_id);
+struct props find_prop_ids(int fd, uint32_t plane_id, uint32_t conn_id, uint32_t crtc_id);
 
 drmModeCrtc *get_crtc_from_conn(int fd, drmModeConnector *conn) {
 	if (conn->encoder_id) {
@@ -252,7 +262,7 @@ int drm_setup(struct screen *S) {
 	simple_modeset(S, crtc->crtc_id); // TODO remove
 	planes(S, crtc->crtc_id);
 	drmModeFreeCrtc(crtc);
-	S->props = find_prop_ids(S->gpu_fd, S->plane_id, connected[n]->connector_id);
+	S->props = find_prop_ids(S->gpu_fd, S->plane_id, connected[n]->connector_id, S->crtc_id);
 	S->props_plane_fb_id = S->props.plane.fb_id;
 
 	errlog("%d %d %d", S->plane_id, S->props_plane_fb_id, S->old_fb_id);
@@ -300,16 +310,16 @@ unsigned int tv_usec, void *user_data) {
 	struct screen *screen = user_data;
 //	errlog("VBLANK %d %.3f", sequence, tv_sec * 1000 + tv_usec / 1000.0);
 	// TODO: better
-	if (flag == 0)
+//	if (flag == 0)
 		screen->vblank_notify(fd, sequence, tv_sec, tv_usec, screen->user_data);
 	request_vblank(screen);
 }
 
 static void page_flip_handler(int fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data) {
-	struct screen *screen = user_data;
-	flag = 0;
-	screen->vblank_notify(fd, sequence, tv_sec, tv_usec, screen->user_data);
+//	struct screen *screen = user_data;
+//	flag = 0;
+//	screen->vblank_notify(fd, sequence, tv_sec, tv_usec, screen->user_data);
 }
 
 void drm_handle_event(int fd) {
@@ -444,7 +454,7 @@ static int modeset_find_crtc(int fd, drmModeRes *res, drmModeConnector *conn) {
 	return -1;
 }
 
-struct props find_prop_ids(int fd, uint32_t plane_id, uint32_t conn_id) {
+struct props find_prop_ids(int fd, uint32_t plane_id, uint32_t conn_id, uint32_t crtc_id) {
 	struct props props;
 	drmModeObjectProperties *obj_props;
 	obj_props = drmModeObjectGetProperties(fd, plane_id,
@@ -489,5 +499,16 @@ struct props find_prop_ids(int fd, uint32_t plane_id, uint32_t conn_id) {
 		drmModeFreeProperty(prop);
 	}
 	drmModeFreeObjectProperties(obj_props);
+	obj_props = drmModeObjectGetProperties(fd, crtc_id,
+	DRM_MODE_OBJECT_CRTC);
+	for (size_t i=0; i<obj_props->count_props; i++) {
+		drmModePropertyRes *prop = drmModeGetProperty(fd,
+		obj_props->props[i]);
+		if (!strcmp(prop->name, "OUT_FENCE_PTR"))
+			props.crtc.out_fence_ptr = prop->prop_id;
+		drmModeFreeProperty(prop);
+	}
+	drmModeFreeObjectProperties(obj_props);
+
 	return props;
 }

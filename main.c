@@ -50,6 +50,8 @@ struct server {
 	struct wl_list seat_list;
 
 	struct wl_list xdg_surface_list;
+
+	struct wl_event_source *event;
 };
 
 struct server *server;
@@ -112,7 +114,6 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
 			screen_post(screen, 0);
 //			NEEDED, screen refresh (scanout) happens automatically
 //			from the currently bound buffer only in one GPU
-		wl_buffer_send_release(buffer);
 	}
 }
 
@@ -161,6 +162,8 @@ void server_window_destroy(struct xdg_toplevel_data *old) {
 		wl_keyboard_send_enter(new->xdg_surface_data->keyboard, 0,
 		new->xdg_surface_data->surface, &array);
 		focused = new;
+	} else {
+		focused = NULL;
 	}
 }
 
@@ -192,6 +195,7 @@ struct screen *server_get_screen(struct server *server) {
 
 static void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data) {
+//	errlog("VBLANK");
 //	printf("VBLANK HANDLER %p\n", user_data);
 /*	struct xdg_surface0 *xdg_surface;
 	wl_list_for_each(xdg_surface, &server->xdg_surface_list, link) {
@@ -218,6 +222,30 @@ tv_sec, unsigned int tv_usec, void *user_data) {
 			surface->frame = 0;
 		}
 	}
+}
+
+static int out_fence_handler(int fd, uint32_t mask, void *data) {
+	struct server *server = data;
+//	errlog("SCANOUT COMPLETED");
+//	if (server->event)
+		wl_event_source_remove(server->event); // sometimes fails with mpv (?)
+	close(fd);
+
+	if (focused) {
+		struct wl_resource *surf_res = focused->xdg_surface_data->surface;
+		struct surface *surface = wl_resource_get_user_data(surf_res);
+		wl_buffer_send_release(surface->current->buffer);
+	}
+	return 0;
+}
+
+void listen_to_out_fence(int fd, void *user_data) {
+	struct server *server = user_data;
+	struct wl_event_loop *el = wl_display_get_event_loop(server->display);
+	server->event = wl_event_loop_add_fd(el, fd, WL_EVENT_READABLE,
+	 out_fence_handler, server);
+	if (!server->event) // was NULL once (kitty)
+		errlog("wl_event_loop_add_fd failed (fd %d)", fd);
 }
 
 static int gpu_ev_handler(int fd, uint32_t mask, void *data) {
@@ -372,7 +400,8 @@ int main(int argc, char *argv[]) {
 	errlog("swvkc DMABUF support: %s", words[dmabuf]);
 	errlog("swvkc DMABUF with MODIFIERS support: %s", words[dmabuf_mod]);
 
-	server->screen = screen_setup(vblank_notify, server, dmabuf_mod);
+	server->screen = screen_setup(vblank_notify, server, listen_to_out_fence,
+	server, dmabuf_mod);
 	if (!server->screen)
 		return EXIT_FAILURE;
 

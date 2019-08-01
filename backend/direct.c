@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include <backend/screen.h>
 #include <util/log.h>
@@ -32,6 +33,10 @@ struct props {
 	struct {
 		uint32_t crtc_id;
 	} conn;
+
+	struct {
+		uint32_t out_fence_ptr;
+	} crtc;
 };
 
 struct screen {
@@ -56,6 +61,9 @@ struct screen {
 	void (*vblank_notify)(int,unsigned int,unsigned int, unsigned int,
 	void*);
 	void *user_data;
+	// out_fence callback
+	void (*listen_to_out_fence)(int, void*);
+	void *user_data2;
 };
 
 void screen_post_direct(struct screen *S, uint32_t width, uint32_t height,
@@ -219,11 +227,20 @@ uint32_t format, int fd, int stride, int offset, uint64_t modifier) {
 	else {
 //	fprintf(stderr, "test success\n");
 	}
+
+	int out_fence = -1;
+	drmModeAtomicAddProperty(req, S->crtc_id, S->props.crtc.out_fence_ptr, (uint64_t)&out_fence);
+
 	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_PAGE_FLIP_EVENT |
-	DRM_MODE_ATOMIC_NONBLOCK, S))
-	perror("atomic commit failed");
+	DRM_MODE_ATOMIC_NONBLOCK, S)) {
+		perror("atomic commit failed");
+		errlog("out_fence: %d", out_fence);
+		close(out_fence);
+	}
 	else {
 //		fprintf(stderr, "atomic commit success\n");
+//		errlog("out_fence: %d", out_fence);
+		S->listen_to_out_fence(out_fence, S->user_data2);
 		if (fb_id[!i])
 			drmModeRmFB(S->gpu_fd, fb_id[!i]);
 	}
