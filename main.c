@@ -446,7 +446,7 @@ int main(int argc, char *argv[]) {
 
 	wl_display_set_global_filter(D, global_filter, 0);
 
-// Can I move at the beginning of the program (still enter key stucks?)
+// Can I move at the beginning of the program (still enter key stuck?)
 	server->input = input_setup();
 	if (!server->input)
 		return EXIT_FAILURE;
@@ -460,9 +460,22 @@ int main(int argc, char *argv[]) {
 	WL_EVENT_READABLE, key_ev_handler, server);
 
 	if (argc > 1) {
+		int len = argc-1; // amount of spaces + terminating NULL byte
+		for (int i=1; i<argc; i++) {
+			len += strlen(argv[i]);
+		}
+		char *client_cmd = malloc(len*sizeof(char*));
+		for (int i=1, offset=0; i<argc; i++) {
+			strcpy(client_cmd+offset, argv[i]);
+			if (i < argc-1) {
+				offset = strlen(client_cmd)+1;
+				client_cmd[offset-1] = ' ';
+			}
+		}
+
 		pid_t pid = fork();
 		if (!pid) {
-			execl("/bin/sh", "/bin/sh", "-c", argv[1], (char*)0);
+			execl("/bin/sh", "/bin/sh", "-c", client_cmd, (char*)NULL);
 			/* If execl returns (i.e. /bin/sh doesn't exist) we are
 			 * in big trouble here
 			 */
