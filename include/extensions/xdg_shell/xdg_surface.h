@@ -7,6 +7,8 @@
 struct xdg_surface0;
 typedef void (*xdg_surface_contents_update_t)(struct xdg_surface0 *, void *);
 
+typedef void (*callback_t)(void *);
+
 struct xdg_surface_state0 {
 	struct box window_geometry;
 };
@@ -24,10 +26,14 @@ struct xdg_surface0 {
 
 	xdg_surface_contents_update_t contents_update_callback;
 	void *user_data;
+
+	callback_t child_destroy_notify;
+	void *data;
 };
 
 struct xdg_surface0 *xdg_surface_new(struct wl_resource *resource, struct
 wl_resource *surface_resource, struct server *server,
-xdg_surface_contents_update_t xdg_surface_contents_update, void *user_data);
+xdg_surface_contents_update_t xdg_surface_contents_update, void *user_data,
+callback_t child_destroy_notify, void *data);
 
 #endif

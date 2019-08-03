@@ -6,19 +6,30 @@
 
 #include <util/box.h>
 
-/*enum role {
+struct surface;
+typedef void (*surface_map_t)(struct surface *, void *);
+typedef void (*surface_unmap_t)(struct surface *, void *);
+
+struct surface_events {
+	surface_map_t map;
+	surface_unmap_t unmap;
+
+	void *user_data;
+};
+
+enum role {
 	ROLE_NONE,
 	ROLE_CURSOR,
 	ROLE_DRAG_AND_DROP_ICON,
 	ROLE_SUBSURFACE,
 	ROLE_XDG_POPUP,
 	ROLE_XDG_TOPLEVEL
-}
+};
 
-enum {
+enum base_role {
+	BASE_ROLE_NONE,
 	BASE_ROLE_XDG_SURFACE
-
-}*/
+};
 
 /*
  * The double-buffered state
@@ -41,16 +52,21 @@ struct surface {
 
 	uint8_t staged; // bitmask
 
-	struct server *server;
-	struct texture *texture;
-
 	struct wl_resource *frame;
 
-//	struct wl_resource *role_object;
+	enum role role;
+	enum base_role base_role;
+	void *role_object;
+	void *base_role_object;
+
+	bool is_mapped;
 
 	struct wl_signal commit;
+
+	struct surface_events surface_events;
 };
 
-struct surface *surface_new(struct wl_resource *resource, struct server *server);
+struct surface *surface_new(struct wl_resource *resource, struct surface_events
+surface_events);
 
 #endif

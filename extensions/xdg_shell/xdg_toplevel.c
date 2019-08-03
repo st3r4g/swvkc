@@ -100,13 +100,26 @@ static const struct xdg_toplevel_interface impl = {
 };
 
 static void commit_notify(struct wl_listener *listener, void *data) {
-	struct xdg_toplevel_data *toplevel_data;
-	toplevel_data = wl_container_of(listener, toplevel_data, commit);
-//	server_request_redraw(toplevel_data->server);
+	struct surface *surface = data;
+	if (!surface->is_mapped && surface->current->buffer) {
+		surface->surface_events.map(surface,
+		 surface->surface_events.user_data);
+		surface->is_mapped = true;
+		errlog("%d", surface->is_mapped);
+		errlog("%p", surface);
+	}
 }
 
 static void destroyed(struct wl_resource *resource) {
+	errlog("xdg_toplevel destroyed");
 	struct xdg_toplevel_data *data = wl_resource_get_user_data(resource);
+/*	struct surface *surface = wl_resource_get_user_data(data->xdg_surface_data->surface);
+	errlog("%p", surface);
+	if (surface->is_mapped) {
+		surface->surface_events.unmap(surface,
+		 surface->surface_events.user_data);
+		surface->is_mapped = false;
+	}*/
 	server_window_destroy(data);
 	errlog("Destroyed the window '%s'", data->app_id); //TODO move to main
 	free(data->app_id);
@@ -123,6 +136,7 @@ void xdg_toplevel_new(struct wl_resource *resource, struct xdg_surface0
 	toplevel_data->xdg_surface_data = xdg_surface_data;
 	struct surface *surface_data =
 	wl_resource_get_user_data(xdg_surface_data->surface);
+	errlog("%p", surface_data);
 	toplevel_data->commit.notify = commit_notify;
 	wl_signal_add(&surface_data->commit, &toplevel_data->commit);
 	toplevel_data->app_id = get_a_name(wl_resource_get_client(resource));
@@ -136,6 +150,7 @@ void xdg_toplevel_new(struct wl_resource *resource, struct xdg_surface0
 	int32_t *state2 = wl_array_add(&array, sizeof(int32_t));
 	*state2 = XDG_TOPLEVEL_STATE_MAXIMIZED;
 	struct box box = screen_get_dimensions(server_get_screen(server));
+/* XXX: mpv --gpu-context=wayland doesn't like this here */
 	xdg_toplevel_send_configure(resource, box.width, box.height, &array);
 //	xdg_toplevel_send_configure(resource, 500, 500, &array);
 	server_set_focus(toplevel_data); // TODO: temp !!!!

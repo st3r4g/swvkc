@@ -3,18 +3,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
 
 #include <core/compositor.h>
 #include <core/region.h>
-#include <core/wl_surface.h>
 
 static void compositor_create_surface(struct wl_client *client, struct
 wl_resource *resource, uint32_t id) {
 	struct compositor *compositor = wl_resource_get_user_data(resource);
 	struct wl_resource *surface_resource = wl_resource_create(client,
 	&wl_surface_interface, 4, id);
-	surface_new(surface_resource, compositor->server);
+	surface_new(surface_resource, compositor->surface_events);
 }
 
 static void compositor_create_region(struct wl_client *client, struct
@@ -34,10 +34,10 @@ void compositor_free(struct wl_resource *resource) {
 	free(compositor);
 }
 
-struct compositor *compositor_new(struct wl_resource *resource, struct server
-*server) {
+struct compositor *compositor_new(struct wl_resource *resource, struct
+surface_events surface_events) {
 	struct compositor *compositor = calloc(1, sizeof(struct compositor));
-	compositor->server = server;
+	compositor->surface_events = surface_events;
 	wl_resource_set_implementation(resource, &impl, compositor,
 	compositor_free);
 	return compositor;

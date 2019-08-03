@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -47,24 +48,25 @@ struct server {
 	struct input *input;
 	struct screen *screen;
 
-	struct wl_list xdg_wm_base_list;
 //	struct wl_list xdg_shell_v6_list;
 	struct wl_list seat_list;
 
 	struct wl_list xdg_surface_list;
+	struct wl_list mapped_surfaces_list;
 
 	struct wl_event_source *event;
 };
 
-struct server *server;
-
-struct window {
-	struct wl_resource *resource;
+struct mapped_surface {
+	struct surface *surface;
 	struct wl_list link;
 };
 
-struct wl_list window_list;
-struct xdg_toplevel_data *focused;
+struct surface *focused_surface(struct server *server) {
+	struct mapped_surface *ms;
+	ms = wl_container_of(server->mapped_surfaces_list.next, ms, link);
+	return ms->surface;
+}
 
 void dmabuf(struct wl_resource *buffer, struct screen *screen) {
 	uint32_t width = wl_buffer_dmabuf_get_width(buffer);
@@ -101,6 +103,40 @@ void shmbuf(struct wl_resource *buffer) {
  * Handle events produced by Wayland objects: `object`_`event`_notify
  */
 
+void surface_map_notify(struct surface *surface, void *user_data) {
+	struct server *server = user_data;
+	if (!wl_list_empty(&server->mapped_surfaces_list)) {
+		struct surface *old = focused_surface(server);
+		struct xdg_surface0 *x = old->base_role_object;
+		wl_keyboard_send_leave(x->keyboard, 0, x->surface);
+	}
+	errlog("A surface has been mapped");
+	struct mapped_surface *new = malloc(sizeof(struct mapped_surface));
+	new->surface = surface;
+	wl_list_insert(&server->mapped_surfaces_list, &new->link);
+}
+
+void surface_unmap_notify(struct surface *surface, void *user_data) {
+	struct server *server = user_data;
+	errlog("A surface has been unmapped");
+	/*
+	 * Is there a way to remove it without going through the list?
+	 */
+	struct mapped_surface *ms;
+	wl_list_for_each(ms, &server->mapped_surfaces_list, link)
+		if (ms->surface == surface)
+			break;
+	wl_list_remove(&ms->link);
+	free(ms);
+	if (!wl_list_empty(&server->mapped_surfaces_list)) {
+		struct wl_array array;
+		wl_array_init(&array); //Need the currently pressed keys
+		struct surface *new = focused_surface(server);
+		struct xdg_surface0 *x = new->base_role_object;
+		wl_keyboard_send_enter(x->keyboard, 0, x->surface, &array);
+	}
+}
+
 void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *user_data) {
 	struct server *server = user_data;
 	struct surface *surface = wl_resource_get_user_data(xdg_surface->surface);
@@ -110,7 +146,10 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
  *      (especially when the clients starts). `busy` prevents committing before
  *      the results of the previous commit are displayed.
  */
-	if (!busy && surface->current->buffer && server_surface_is_focused(xdg_surface)) {
+	if (busy)
+		errlog("ERROR: buffer already committed");
+	if (!busy && surface->current->buffer && surface == focused_surface(server)) {
+//		errlog("buffer committed");
 		struct wl_resource *buffer = surface->current->buffer;
 		struct screen *screen = server_get_screen(server);
 		if (wl_buffer_is_dmabuf(buffer))
@@ -125,21 +164,11 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
 	}
 }
 
-int strncmp_case(const char *_l, const char *_r, size_t n) {
-	const unsigned char *l=(void *)_l, *r=(void *)_r;
-	if (!n--) return 0;
-	for (; *l && *r && n && (*l == *r || abs(*l - *r) == 32) ; l++, r++, n--);
-	if (abs(*l - *r) == 32)
-		return 0;
-	else
-		return *l - *r;
-}
-
-struct xdg_toplevel_data *match_app_id(char *name) {
+struct xdg_toplevel_data *match_app_id(struct server *server, char *name) {
 	struct xdg_toplevel_data *data, *match;
 	int i = 0;
-	wl_list_for_each(data, &window_list, link) {
-		if (!strncmp_case(name, data->app_id, strlen(name)))
+	wl_list_for_each(data, &server->mapped_surfaces_list, link) {
+		if (!strncasecmp(name, data->app_id, strlen(name)))
 			match = data, i++;
 	}
 	if (i == 1)
@@ -149,18 +178,18 @@ struct xdg_toplevel_data *match_app_id(char *name) {
 }
 
 void server_window_create(struct xdg_toplevel_data *new) {
-	if (!wl_list_empty(&window_list)) {
+/*	if (!wl_list_empty(&window_list)) {
 		struct xdg_toplevel_data *old;
 		old = wl_container_of(window_list.next, old, link);
 		wl_keyboard_send_leave(old->xdg_surface_data->keyboard, 0,
 		old->xdg_surface_data->surface);
 		focused = NULL;
 	}
-	wl_list_insert(&window_list, &new->link);
+	wl_list_insert(&window_list, &new->link);*/
 }
 
 void server_window_destroy(struct xdg_toplevel_data *old) {
-	struct wl_array array;
+/*	struct wl_array array;
 	wl_array_init(&array); //Need the currently pressed keys
 //	wl_keyboard_send_leave(resource, 0, xdg_surface->surface);
 	wl_list_remove(&old->link);
@@ -172,15 +201,14 @@ void server_window_destroy(struct xdg_toplevel_data *old) {
 		focused = new;
 	} else {
 		focused = NULL;
-	}
+	}*/
 }
 
 void server_set_focus(struct xdg_toplevel_data *data) {
-	focused = data;
 }
 
 void server_change_focus(struct xdg_toplevel_data *data) {
-	errlog("focused window: %s", focused->app_id);
+/*	errlog("focused window: %s", focused->app_id);
 	errlog("new window: %s", data->app_id);
 	struct xdg_surface0 *old = focused->xdg_surface_data;
 	if (old->self)
@@ -190,11 +218,7 @@ void server_change_focus(struct xdg_toplevel_data *data) {
 	struct xdg_surface0 *new = data->xdg_surface_data;
 	if (new->self)
 		wl_keyboard_send_enter(new->keyboard, 0, new->surface, &array);
-	focused = data;
-}
-
-int server_surface_is_focused(struct xdg_surface0 *data) {
-	return data == focused->xdg_surface_data;
+	focused = data;*/
 }
 
 struct screen *server_get_screen(struct server *server) {
@@ -203,26 +227,13 @@ struct screen *server_get_screen(struct server *server) {
 
 static void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data) {
+	struct server *server = user_data;
 //	errlog("VBLANK");
-//	printf("VBLANK HANDLER %p\n", user_data);
-/*	struct xdg_surface0 *xdg_surface;
-	wl_list_for_each(xdg_surface, &server->xdg_surface_list, link) {
-		struct surface *surface =
-		wl_resource_get_user_data(xdg_surface->surface);
-		if (surface->frame) {
-			unsigned int ms = tv_sec * 1000 + tv_usec / 1000;
-			wl_callback_send_done(surface->frame, (uint32_t)ms);
-			wl_resource_destroy(surface->frame);
-			surface->frame = 0;
-		}
-	}*/
 	struct timespec time;
 	clock_gettime(CLOCK_REALTIME, &time);
 
-	struct xdg_toplevel_data *data;
-	wl_list_for_each(data, &window_list, link) {
-		struct surface *surface =
-		wl_resource_get_user_data(data->xdg_surface_data->surface);
+	if (!wl_list_empty(&server->mapped_surfaces_list)) {
+		struct surface *surface = focused_surface(server);
 		if (surface->frame) {
 			unsigned int ms = time.tv_sec * 1000 + time.tv_nsec / 1000000;
 			wl_callback_send_done(surface->frame, (uint32_t)ms);
@@ -239,9 +250,8 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 		wl_event_source_remove(server->event); // sometimes fails with mpv (?)
 	close(fd);
 
-	if (focused) {
-		struct wl_resource *surf_res = focused->xdg_surface_data->surface;
-		struct surface *surface = wl_resource_get_user_data(surf_res);
+	if (!wl_list_empty(&server->mapped_surfaces_list)) {
+		struct surface *surface = focused_surface(server);
 		if (surface->current->previous_buffer)
 			wl_buffer_send_release(surface->current->previous_buffer);
 	}
@@ -288,12 +298,14 @@ static int key_ev_handler(int key_fd, uint32_t mask, void *data) {
 			errlog("the key '%s' was pressed", aaa.name);
 			name[i] = aaa.name[0];
 			i++;
-			struct xdg_toplevel_data *match = match_app_id(name);
+			struct xdg_toplevel_data *match = match_app_id(server, name);
 			errlog("match %p", (void*)match);
 			if (match)
 				server_change_focus(match);
-		} else if (!wl_list_empty(&window_list)) {
-			struct wl_resource *resource = focused->xdg_surface_data->keyboard;
+		} else if (!wl_list_empty(&server->mapped_surfaces_list)) {
+			struct surface *surface = focused_surface(server);
+			struct xdg_surface0 *xdg_surface = surface->base_role_object;
+			struct wl_resource *resource = xdg_surface->keyboard;
 			if (resource) {
 				struct keyboard *data = wl_resource_get_user_data(resource);
 				if (data)
@@ -309,7 +321,12 @@ version, uint32_t id) {
 	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&wl_compositor_interface, version, id);
-	compositor_new(resource, server);
+	struct surface_events surface_events = {
+		.map = surface_map_notify,
+		.unmap = surface_unmap_notify,
+		.user_data = server
+	};
+	compositor_new(resource, surface_events);
 }
 
 static void data_device_manager_bind(struct wl_client *client, void *data,
@@ -352,9 +369,7 @@ version, uint32_t id) {
 		.xdg_surface_contents_update = xdg_surface_contents_update_notify,
 		.user_data = server
 	};
-	struct xdg_wm_base *xdg_wm_base = xdg_wm_base_new(resource, server,
-	 xdg_shell_events);
-	wl_list_insert(&server->xdg_wm_base_list, &xdg_wm_base->link);
+	xdg_wm_base_new(resource, server, xdg_shell_events);
 }
 
 /*static void xdg_shell_v6_bind(struct wl_client *client, void *data, uint32_t
@@ -395,14 +410,13 @@ static bool global_filter(const struct wl_client *client, const struct wl_global
 }
 
 int main(int argc, char *argv[]) {
-	//struct server *server = calloc(1, sizeof(struct server));
-	server = calloc(1, sizeof(struct server));
+	struct server *server = calloc(1, sizeof(struct server));
 	wl_list_init(&server->seat_list);
-	wl_list_init(&server->xdg_wm_base_list);
 	wl_list_init(&server->xdg_surface_list);
+	wl_list_init(&server->mapped_surfaces_list);
 //	wl_list_init(&server->xdg_shell_v6_list);
 
-	wl_list_init(&window_list);
+//	wl_list_init(&window_list);
 
 	bool dmabuf = false, dmabuf_mod = false;
 	vulkan_init(&dmabuf, &dmabuf_mod);

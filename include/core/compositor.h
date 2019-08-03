@@ -1,7 +1,8 @@
-#include <wayland-server-core.h>
+#include <core/wl_surface.h>
 
 struct compositor {
-	struct server *server;
+	struct surface_events surface_events;
 };
 
-struct compositor *compositor_new(struct wl_resource *resource, struct server *server);
+struct compositor *compositor_new(struct wl_resource *resource, struct
+surface_events surface_events);

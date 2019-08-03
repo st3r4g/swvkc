@@ -87,16 +87,17 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 }
 
 static void xdg_surface_free(struct wl_resource *resource) {
+	errlog("xdg_surface destroyed");
 	struct xdg_surface0 *xdg_surface = wl_resource_get_user_data(resource);
+	xdg_surface->child_destroy_notify(xdg_surface->data);
 	free(xdg_surface->current);
 	free(xdg_surface->pending);
 	free(xdg_surface);
 }
 
 struct xdg_surface0 *xdg_surface_new(struct wl_resource *resource, struct
-wl_resource *surface_resource, struct server *server,
-xdg_surface_contents_update_t contents_update, void
-*user_data) {
+wl_resource *surface_resource, struct server *server, xdg_surface_contents_update_t contents_update,
+void *user_data, callback_t child_destroy_notify, void *data) {
 	struct surface *surface = wl_resource_get_user_data(surface_resource);
 	struct xdg_surface0 *xdg_surface = calloc(1, sizeof(struct
 	xdg_surface0));
@@ -108,6 +109,9 @@ xdg_surface_contents_update_t contents_update, void
 
 	xdg_surface->contents_update_callback = contents_update;
 	xdg_surface->user_data = user_data;
+
+	xdg_surface->child_destroy_notify = child_destroy_notify;
+	xdg_surface->data = data;
 
 	xdg_surface->commit.notify = commit_notify;
 	wl_signal_add(&surface->commit, &xdg_surface->commit);

@@ -37,10 +37,8 @@ static void damage(struct wl_client *client, struct wl_resource
 static void frame(struct wl_client *client, struct wl_resource
 *resource, uint32_t callback) {
 	struct surface *surface = wl_resource_get_user_data(resource);
-	if (!surface->frame) {
+	if (!surface->frame)
 		surface->frame = wl_resource_create(client, &wl_callback_interface, 1, callback);
-//		screen_vblank(server_get_screen(surface->server));
-	}
 }
 
 static void set_opaque_region(struct wl_client *client, struct
@@ -67,27 +65,6 @@ static void commit(struct wl_client *client, struct wl_resource
 	if (surface->staged & BUFFER) {
 		current->buffer = pending->buffer;
 		current->previous_buffer = pending->previous_buffer;
-//		renderer_delete_tex(surface->texture);
-//		uint32_t buf_w, buf_h;
-// "If wl_surface.attach is sent with a NULL wl_buffer, the following
-//  wl_surface.commit will remove the surface content."
-/*		if (current->buffer) {
-//			surface->texture = tex_from_buffer(surface->egl,
-//			current->buffer, &buf_w, &buf_h);
-			struct wl_resource *buffer = current->buffer;
-			uint32_t width = wl_buffer_dmabuf_get_width(buffer);
-			uint32_t height = wl_buffer_dmabuf_get_height(buffer);
-			uint32_t format = wl_buffer_dmabuf_get_format(buffer);
-			int fd = wl_buffer_dmabuf_get_fd(buffer);
-			int stride = wl_buffer_dmabuf_get_stride(buffer);
-			int offset = wl_buffer_dmabuf_get_offset(buffer);
-			uint64_t mod = wl_buffer_dmabuf_get_mod(buffer);
-			screen_post_direct(server_get_screen(surface->server),
-			width, height, format, fd, stride, offset, mod);
-			wl_buffer_send_release(buffer);
-		} else {
-//			surface->texture = 0, buf_w = 0, buf_h = 0;
-		}*/
 	}
 
 	if (surface->staged & DAMAGE)
@@ -154,13 +131,20 @@ static const struct wl_surface_interface impl = {
 };
 
 void surface_free(struct wl_resource *resource) {
+	errlog("surface destroyed");
 	struct surface *surface = wl_resource_get_user_data(resource);
+	if (surface->is_mapped) {
+		surface->surface_events.unmap(surface,
+		 surface->surface_events.user_data);
+		surface->is_mapped = false;
+	}
 	free(surface->pending);
 	free(surface->current);
 	free(surface);
 }
 
-struct surface *surface_new(struct wl_resource *resource, struct server *server) {
+struct surface *surface_new(struct wl_resource *resource, struct surface_events
+surface_events) {
 	struct surface *surface = calloc(1, sizeof(struct surface));
 	surface->pending = calloc(1, sizeof(struct dbuf_state));
 	surface->current = calloc(1, sizeof(struct dbuf_state));
@@ -169,7 +153,7 @@ struct surface *surface_new(struct wl_resource *resource, struct server *server)
 	surface->current->buffer_transform = WL_OUTPUT_TRANSFORM_NORMAL;
 	surface->current->buffer_scale = 1;
 
-	surface->server = server;
+	surface->surface_events = surface_events;
 	wl_signal_init(&surface->commit);
 	wl_resource_set_implementation(resource, &impl, surface, surface_free);
 	return surface;
