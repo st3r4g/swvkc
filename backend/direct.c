@@ -59,11 +59,13 @@ struct screen {
 
 	// vblank callback
 	void (*vblank_notify)(int,unsigned int,unsigned int, unsigned int,
-	void*);
+	void*, bool);
 	void *user_data;
 	// out_fence callback
 	void (*listen_to_out_fence)(int, void*);
 	void *user_data2;
+
+	bool vblank_has_page_flip;
 };
 
 void screen_post_direct(struct screen *S, uint32_t width, uint32_t height,

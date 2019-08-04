@@ -14,8 +14,7 @@
 #include <xf86drmMode.h>
 
 #include <util/log.h>
-
-//int flag = 0;
+#include <util/my_drm_handle_event.h>
 
 // GBM formats are either GBM_BO_FORMAT_XRGB8888 or GBM_BO_FORMAT_ARGB8888
 //static const int COLOR_DEPTH = 24;
@@ -67,19 +66,21 @@ struct screen {
 
 	// vblank callback
 	void (*vblank_notify)(int,unsigned int,unsigned int, unsigned int,
-	void*);
+	void*, bool);
 	void *user_data;
 	// out_fence callback
 	void (*listen_to_out_fence)(int, void*);
 	void *user_data2;
+
+	bool vblank_has_page_flip;
 };
 
 int drm_setup(struct screen *);
 int gbm_setup(struct screen *, bool dmabuf_mod);
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
-unsigned int, void*), void *user_data, void (*listen_to_out_fence)(int, void*),
-void *user_data2, bool dmabuf_mod) {
+unsigned int, void*, bool), void *user_data, void (*listen_to_out_fence)(int,
+void*), void *user_data2, bool dmabuf_mod) {
 	struct screen *screen = calloc(1, sizeof(struct screen));
 	screen->vblank_notify = vblank_notify;
 	screen->user_data = user_data;
@@ -308,18 +309,19 @@ int gbm_setup(struct screen *S, bool dmabuf_mod) {
 static void vblank_handler(int fd, unsigned int sequence, unsigned int tv_sec,
 unsigned int tv_usec, void *user_data) {
 	struct screen *screen = user_data;
-//	errlog("VBLANK %d %.3f", sequence, tv_sec * 1000 + tv_usec / 1000.0);
-	// TODO: better
-//	if (flag == 0)
-		screen->vblank_notify(fd, sequence, tv_sec, tv_usec, screen->user_data);
+	screen->vblank_notify(fd, sequence, tv_sec, tv_usec, screen->user_data,
+	 screen->vblank_has_page_flip);
 	request_vblank(screen);
+/*
+ * Reset the vblank_has_page_flip flag
+ */
+	screen->vblank_has_page_flip = false;
 }
 
 static void page_flip_handler(int fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data) {
-//	struct screen *screen = user_data;
-//	flag = 0;
-//	screen->vblank_notify(fd, sequence, tv_sec, tv_usec, screen->user_data);
+	struct screen *screen = user_data;
+	screen->vblank_has_page_flip = true;
 }
 
 void drm_handle_event(int fd) {
@@ -328,7 +330,10 @@ void drm_handle_event(int fd) {
 		.vblank_handler = vblank_handler,
 		.page_flip_handler = page_flip_handler,
 	};
-	drmHandleEvent(fd, &ev_context);
+/*
+ * Function modified so that page_flip_handler gets called before vblank_handler
+ */
+	my_drmHandleEvent(fd, &ev_context);
 }
 
 void screen_post(struct screen *S, int fence_fd) {

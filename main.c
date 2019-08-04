@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <time.h>
 #include <unistd.h>
 
 #include <wayland-server-core.h>
@@ -40,7 +39,7 @@
 
 #include <linux/input-event-codes.h>
 
-bool busy = false;
+bool pending_page_flip = false;
 
 struct server {
 	struct wl_display *display;
@@ -142,13 +141,12 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
 	struct surface *surface = wl_resource_get_user_data(xdg_surface->surface);
 
 /*
- * XXX: Understand why contents are updated more than once per frame sometimes
- *      (especially when the clients starts). `busy` prevents committing before
- *      the results of the previous commit are displayed.
+ * At this point `pending_page_flip` should always be false (unless the client
+ * commits more than one buffer update per signaled frame on purpose)
  */
-	if (busy)
+	if (pending_page_flip)
 		errlog("ERROR: buffer already committed");
-	if (!busy && surface->current->buffer && surface == focused_surface(server)) {
+	if (!pending_page_flip && surface->current->buffer && surface == focused_surface(server)) {
 //		errlog("buffer committed");
 		struct wl_resource *buffer = surface->current->buffer;
 		struct screen *screen = server_get_screen(server);
@@ -160,7 +158,7 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
 			screen_post(screen, 0);
 //			NEEDED, screen refresh (scanout) happens automatically
 //			from the currently bound buffer only in one GPU
-		busy = true;
+		pending_page_flip = true;
 	}
 }
 
@@ -226,17 +224,22 @@ struct screen *server_get_screen(struct server *server) {
 }
 
 static void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
-tv_sec, unsigned int tv_usec, void *user_data) {
+tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 	struct server *server = user_data;
 //	errlog("VBLANK");
-	struct timespec time;
-	clock_gettime(CLOCK_REALTIME, &time);
+/*
+ * Sometimes a page-flip request won't make it to the immediately following
+ * vblank due to being issued too close to it. When this happens, we don't want
+ * to tell the client to render a new frame. This is the worst case scenario for
+ * input lag (= a little more than the inverse of the refresh rate)
+ */
+	bool skip_frame = pending_page_flip && !vblank_has_page_flip;
 
-	if (!wl_list_empty(&server->mapped_surfaces_list)) {
+	if (!wl_list_empty(&server->mapped_surfaces_list) && !skip_frame) {
 		struct surface *surface = focused_surface(server);
 		if (surface->frame) {
-			unsigned int ms = time.tv_sec * 1000 + time.tv_nsec / 1000000;
-			wl_callback_send_done(surface->frame, (uint32_t)ms);
+			uint32_t ms = tv_sec * 1000 + tv_usec / 1000;
+			wl_callback_send_done(surface->frame, ms);
 			wl_resource_destroy(surface->frame);
 			surface->frame = 0;
 		}
@@ -255,7 +258,7 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 		if (surface->current->previous_buffer)
 			wl_buffer_send_release(surface->current->previous_buffer);
 	}
-	busy = false;
+	pending_page_flip = false;
 	return 0;
 }
 
