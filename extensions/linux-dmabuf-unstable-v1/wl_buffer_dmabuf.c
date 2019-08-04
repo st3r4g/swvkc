@@ -15,7 +15,12 @@ static const struct wl_buffer_interface impl = {destroy};
 
 static void free_data(struct wl_resource *resource) {
 	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
-	close(data->fd);
+	for (size_t i=0; i<data->num_planes; i++)
+		close(data->fds[i]);
+	free(data->fds);
+	free(data->offsets);
+	free(data->strides);
+	free(data->modifiers);
 	free(data);
 }
 
@@ -45,27 +50,32 @@ uint32_t wl_buffer_dmabuf_get_format(struct wl_resource *resource) {
 	return data->format;
 }
 
-int32_t wl_buffer_dmabuf_get_fd(struct wl_resource *resource) {
+uint32_t wl_buffer_dmabuf_get_num_planes(struct wl_resource *resource) {
 	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
-	return data->fd;
+	return data->num_planes;
 }
 
-uint32_t wl_buffer_dmabuf_get_offset(struct wl_resource *resource) {
+int32_t *wl_buffer_dmabuf_get_fds(struct wl_resource *resource) {
 	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
-	return data->offset;
+	return data->fds;
 }
 
-uint32_t wl_buffer_dmabuf_get_stride(struct wl_resource *resource) {
+uint32_t *wl_buffer_dmabuf_get_offsets(struct wl_resource *resource) {
 	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
-	return data->stride;
+	return data->offsets;
 }
 
-uint64_t wl_buffer_dmabuf_get_mod(struct wl_resource *resource) {
+uint32_t *wl_buffer_dmabuf_get_strides(struct wl_resource *resource) {
 	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
-	return data->modifier;
+	return data->strides;
 }
 
-uint32_t wl_buffer_dmabuf_get_mod_lo(struct wl_resource *resource) {
+uint64_t *wl_buffer_dmabuf_get_mods(struct wl_resource *resource) {
+	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
+	return data->modifiers;
+}
+
+/*uint32_t wl_buffer_dmabuf_get_mod_lo(struct wl_resource *resource) {
 	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
 	return data->modifier & 0xFFFFFFFF;
 }
@@ -73,4 +83,4 @@ uint32_t wl_buffer_dmabuf_get_mod_lo(struct wl_resource *resource) {
 uint32_t wl_buffer_dmabuf_get_mod_hi(struct wl_resource *resource) {
 	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
 	return data->modifier >> 32;
-}
+}*/

@@ -150,7 +150,12 @@ void xdg_toplevel_new(struct wl_resource *resource, struct xdg_surface0
 	int32_t *state2 = wl_array_add(&array, sizeof(int32_t));
 	*state2 = XDG_TOPLEVEL_STATE_MAXIMIZED;
 	struct box box = screen_get_dimensions(server_get_screen(server));
-/* XXX: mpv --gpu-context=wayland doesn't like this here */
+/*
+ * XXX: mpv --gpu-context=wayland segfaults for this, probably their bug:
+ *      they try to resize the window before initializing egl_window
+ * The following `if` is just a temporary way to avoid this segfault
+ */
+	if (strcmp(toplevel_data->app_id, "mpv"))
 	xdg_toplevel_send_configure(resource, box.width, box.height, &array);
 //	xdg_toplevel_send_configure(resource, 500, 500, &array);
 	server_set_focus(toplevel_data); // TODO: temp !!!!

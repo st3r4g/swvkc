@@ -71,10 +71,10 @@ void dmabuf(struct wl_resource *buffer, struct screen *screen) {
 	uint32_t width = wl_buffer_dmabuf_get_width(buffer);
 	uint32_t height = wl_buffer_dmabuf_get_height(buffer);
 	uint32_t format = wl_buffer_dmabuf_get_format(buffer);
-	int fd = wl_buffer_dmabuf_get_fd(buffer);
-	int stride = wl_buffer_dmabuf_get_stride(buffer);
-	int offset = wl_buffer_dmabuf_get_offset(buffer);
-	uint64_t mod = wl_buffer_dmabuf_get_mod(buffer);
+	int fd = wl_buffer_dmabuf_get_fds(buffer)[0];
+	int stride = wl_buffer_dmabuf_get_strides(buffer)[0];
+	int offset = wl_buffer_dmabuf_get_offsets(buffer)[0];
+	uint64_t mod = wl_buffer_dmabuf_get_mods(buffer)[0];
 	// 1) TODO Copy window buffer to screen
 	// 2) schedule pageflip with new screen content
 	/*screen_post_direct(server_get_screen(surface->server),
