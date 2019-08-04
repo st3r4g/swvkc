@@ -1,5 +1,7 @@
 #include <stdbool.h>
 
+struct wl_resource;
+
 struct wl_buffer_dmabuf_data {
 	int32_t width;
 	int32_t height;
@@ -13,7 +15,9 @@ struct wl_buffer_dmabuf_data {
 	uint64_t *modifiers;
 };
 
-struct wl_buffer_dmabuf_data *wl_buffer_dmabuf_new(struct wl_resource *);
+struct wl_buffer_dmabuf_data *wl_buffer_dmabuf_new(struct wl_resource *resource,
+int32_t width, int32_t height, uint32_t format, uint32_t flags, uint32_t
+num_planes);
 
 bool wl_buffer_is_dmabuf(struct wl_resource *);
 

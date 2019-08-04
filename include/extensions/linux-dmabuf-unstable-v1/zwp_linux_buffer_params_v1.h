@@ -1,3 +1,7 @@
+#include <wayland-server-core.h>
+
+#include <stdbool.h>
+
 struct plane {
 	int32_t fd;
 	uint32_t plane_idx;
@@ -9,6 +13,7 @@ struct plane {
 };
 
 struct zwp_linux_buffer_params_v1_data {
+	bool already_used;
 	struct wl_list plane_list;
 };
 

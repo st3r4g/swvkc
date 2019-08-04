@@ -24,11 +24,21 @@ static void free_data(struct wl_resource *resource) {
 	free(data);
 }
 
-struct wl_buffer_dmabuf_data *wl_buffer_dmabuf_new(struct wl_resource *resource)
-{
-	struct wl_buffer_dmabuf_data *data = malloc(sizeof(*data));
-	wl_resource_set_implementation(resource, &impl, data, free_data);
-	return data;
+struct wl_buffer_dmabuf_data *wl_buffer_dmabuf_new(struct wl_resource *resource,
+int32_t width, int32_t height, uint32_t format, uint32_t flags, uint32_t
+num_planes) {
+	struct wl_buffer_dmabuf_data *dmabuf = malloc(sizeof(*dmabuf));
+	dmabuf->width = width;
+	dmabuf->height = height;
+	dmabuf->format = format;
+	dmabuf->flags = flags;
+	dmabuf->num_planes = num_planes;
+	dmabuf->fds = malloc(num_planes*sizeof(int32_t));
+	dmabuf->offsets = malloc(num_planes*sizeof(uint32_t));
+	dmabuf->strides = malloc(num_planes*sizeof(uint32_t));
+	dmabuf->modifiers = malloc(num_planes*sizeof(uint64_t));
+	wl_resource_set_implementation(resource, &impl, dmabuf, free_data);
+	return dmabuf;
 }
 
 bool wl_buffer_is_dmabuf(struct wl_resource *resource) {
