@@ -67,7 +67,7 @@ buffer_id, int32_t width, int32_t height, uint32_t format, uint32_t flags) {
 	}
 	params->already_used = true;
 
-	if (format != DRM_FORMAT_XRGB8888 && format != DRM_FORMAT_ARGB8888) {
+	if (format != DRM_FORMAT_XRGB8888 && format != DRM_FORMAT_ARGB8888 && format != DRM_FORMAT_YUYV) {
 		wl_resource_post_error(resource,
 		 ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INVALID_FORMAT,
 		  "Format not supported");
@@ -105,7 +105,7 @@ buffer_id, int32_t width, int32_t height, uint32_t format, uint32_t flags) {
 	struct wl_resource *child = wl_resource_create(client,
 	&wl_buffer_interface, 1, buffer_id);
 	struct wl_buffer_dmabuf_data *dmabuf = wl_buffer_dmabuf_new(child,
-	 width, height, format, flags, num_planes);
+	 width, height, format, flags, num_planes, params->buffer_dmabuf_events);
 
 	struct plane *plane;
 	wl_list_for_each(plane, &params->plane_list, link) {
@@ -130,6 +130,12 @@ buffer_id, int32_t width, int32_t height, uint32_t format, uint32_t flags) {
 		dmabuf->strides[i] = plane->stride;
 		dmabuf->modifiers[i] = plane->modifier;
 	}
+/*
+ * buffer_dmabuf creation was successful, notify subsystems for importing
+ */
+	if (dmabuf->buffer_dmabuf_events.create)
+		dmabuf->buffer_dmabuf_events.create(dmabuf,
+		 dmabuf->buffer_dmabuf_events.user_data);
 
 	if (buffer_id == 0) // `create` request
 		zwp_linux_buffer_params_v1_send_created(resource, child);
@@ -165,9 +171,10 @@ static void free_data(struct wl_resource *resource) {
 }
 
 struct zwp_linux_buffer_params_v1_data *zwp_linux_buffer_params_v1_new(struct
-wl_resource *resource) {
+wl_resource *resource, struct buffer_dmabuf_events buffer_dmabuf_events) {
 	struct zwp_linux_buffer_params_v1_data* data = calloc(1, sizeof(*data));
 	wl_list_init(&data->plane_list);
+	data->buffer_dmabuf_events = buffer_dmabuf_events;
 	wl_resource_set_implementation(resource, &impl, data, free_data);
 	return data;
 }

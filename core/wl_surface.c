@@ -84,8 +84,15 @@ static void commit(struct wl_client *client, struct wl_resource
 
 	if (surface->staged & BUFFER_DAMAGE)
 		current->buffer_damage = pending->buffer_damage;
-
+/*
+ * Commit every other possible role-specific state
+ */
 	wl_signal_emit(&surface->commit, surface);
+
+	if (surface->staged & BUFFER && surface->is_mapped)
+		surface->surface_events.contents_update(surface,
+		 surface->surface_events.user_data);
+
 	surface->staged = 0;
 }
 

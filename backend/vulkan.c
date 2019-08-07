@@ -4,6 +4,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <backend/bufmgr.h>
+
 #include <vulkan/vulkan.h>
 #include <util/log.h>
 
@@ -683,7 +685,12 @@ int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) 
 	return EXIT_SUCCESS;
 }
 
-void vulkan_create_screen_image(int fd, int width, int height, int stride, uint64_t mod) {
+void vulkan_create_screen_image(struct buffer *buffer) {
+	int fd = buffer_get_fd(buffer);
+	int width = buffer_get_width(buffer);
+	int height = buffer_get_height(buffer);
+	int stride = buffer_get_stride(buffer, 0);
+	int mod = buffer_get_modifier(buffer);
 	screen_image = create_image(width, height, stride, mod, device);
 	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
 	bind_image_memory(device, screen_image, screen_memory);

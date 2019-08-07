@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 
+#include <gbm.h>
+
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
@@ -8,7 +10,8 @@
 
 static PFNEGLBINDWAYLANDDISPLAYWL eglBindWaylandDisplayWL = 0;
 
-void legacy_wl_drm_setup(struct wl_display *D, struct gbm_device *gbm) {
+void legacy_wl_drm_setup(struct wl_display *D, int drm_fd) {
+	struct gbm_device *gbm = gbm_create_device(drm_fd);
 	EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_GBM_MESA, gbm,
 	NULL);
 	if (display == EGL_NO_DISPLAY) {

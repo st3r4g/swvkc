@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <unistd.h>
 
+#include <backend/bufmgr.h>
 #include <backend/screen.h>
 #include <util/log.h>
 
@@ -57,6 +58,8 @@ struct screen {
 	struct gbm_surface *gbm_surface;
 	struct gbm_bo *gbm_bo;
 
+	struct bufmgr *bufmgr;
+
 	// vblank callback
 	void (*vblank_notify)(int,unsigned int,unsigned int, unsigned int,
 	void*, bool);
@@ -76,22 +79,6 @@ uint32_t format, int fd, int stride, int offset, uint64_t modifier) {
 		fprintf(stderr, "atomic allocation failed\n");
 
 	errlog("%d %d %d %d %d %d %d", width, height, format, fd, stride, offset, modifier);
-	struct gbm_import_fd_modifier_data buffer = {
-		.width = width,
-		.height = height,
-		.format = format,
-		.num_fds = 1,
-		.fds[0] = fd,
-		.strides[0] = stride,
-		.offsets[0] = offset,
-		.modifier = modifier
-	};
-	struct gbm_bo *bo = gbm_bo_import(S->gbm_device,
-	GBM_BO_IMPORT_FD_MODIFIER, &buffer, GBM_BO_USE_SCANOUT);
-
-	if (!bo) {
-		perror("import");
-	}
 
 	uint32_t bo_width = gbm_bo_get_width(bo);
 	uint32_t bo_height = gbm_bo_get_height(bo);
@@ -160,10 +147,9 @@ uint32_t format, int fd, int stride, int offset, uint64_t modifier) {
 }
 
 uint32_t fb_id[2] = {0};
+struct gbm_bo *bo[2] = {0};
 
-void client_buffer_on_overlay(struct screen *S, uint32_t width, uint32_t height,
-uint32_t format, int fd, int stride, int offset, uint64_t modifier) {
-	static int i = 0;
+/*void import_dmabuf_with_gbm() {
 	struct gbm_import_fd_modifier_data buffer = {
 		.width = width,
 		.height = height,
@@ -174,78 +160,32 @@ uint32_t format, int fd, int stride, int offset, uint64_t modifier) {
 		.offsets[0] = offset,
 		.modifier = modifier
 	};
-	struct gbm_bo *bo = gbm_bo_import(S->gbm_device,
-	GBM_BO_IMPORT_FD_MODIFIER, &buffer, GBM_BO_USE_SCANOUT);
+	bo[i] = gbm_bo_import(S->gbm_device, GBM_BO_IMPORT_FD_MODIFIER, &buffer,
+	 GBM_BO_USE_SCANOUT);
 
-	if (!bo) {
+	if (!bo[i]) {
 		perror("import");
 	}
 
-	uint32_t bo_width = gbm_bo_get_width(bo);
-	uint32_t bo_height = gbm_bo_get_height(bo);
+	uint32_t bo_width = gbm_bo_get_width(bo[i]);
+	uint32_t bo_height = gbm_bo_get_height(bo[i]);
 
 	uint32_t bo_handles[4] = {0};
 	uint32_t bo_strides[4] = {0};
 	uint32_t bo_offsets[4] = {0};
 	uint64_t bo_modifiers[4] = {0};
-	for (int j = 0; j < gbm_bo_get_plane_count(bo); j++) {
-		bo_handles[j] = gbm_bo_get_handle_for_plane(bo, j).u32;
-		bo_strides[j] = gbm_bo_get_stride_for_plane(bo, j);
-		bo_offsets[j] = gbm_bo_get_offset(bo, j);
+//	errlog("number of planes: %d", gbm_bo_get_plane_count(bo));
+	for (int j = 0; j < 1; j++) {
+		bo_handles[j] = gbm_bo_get_handle_for_plane(bo[i], j).u32;
+//		errlog("bo handle %d: %d", j, bo_handles[j]);
+		bo_strides[j] = gbm_bo_get_stride_for_plane(bo[i], j);
+		bo_offsets[j] = gbm_bo_get_offset(bo[i], j);
 		// KMS requires all BO planes to have the same modifier
-		bo_modifiers[j] = gbm_bo_get_modifier(bo);
+		bo_modifiers[j] = gbm_bo_get_modifier(bo[i]);
 	}
 
 //	uint32_t handle = gbm_bo_get_handle(bo).u32;
-//	uint32_t bo_format = format;
+	uint32_t bo_format = gbm_bo_get_format(bo[i]);
+}*/
 
-/*	if (drmModeAddFB2WithModifiers(S->gpu_fd, width, height, COLOR_DEPTH, BIT_PER_PIXEL,
-	stride, handle, &S->fb_id[i])) {*/
-	if (drmModeAddFB2WithModifiers(S->gpu_fd, bo_width, bo_height, DRM_FORMAT_XRGB8888,
-	bo_handles, bo_strides, bo_offsets, bo_modifiers, fb_id+i, DRM_MODE_FB_MODIFIERS)) {
-		perror("AddFB");
-	}
 
-	drmModeAtomicReq *req = drmModeAtomicAlloc();
-	if (!req)
-		fprintf(stderr, "atomic allocation failed\n");
-
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_x, 0 << 16); // SRC_X
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_y, 0 << 16); // SRC_Y
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_w, bo_width << 16); // SRC_W
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_h, bo_height << 16); // SRC_H
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_x, 0); // CRTC_X
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_y, 0); // CRTC_Y
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_w, bo_width); // CRTC_W
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_h, bo_height); // CRTC_H
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_id, S->crtc_id); // CRTC_ID
-
-	if (drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.fb_id, fb_id[i]) < 0)
-		fprintf(stderr, "atomic add property failed\n");
-
-	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_ATOMIC_TEST_ONLY |
-	DRM_MODE_ATOMIC_ALLOW_MODESET, 0))
-	perror("test failed");
-	else {
-//	fprintf(stderr, "test success\n");
-	}
-
-	int out_fence = -1;
-	drmModeAtomicAddProperty(req, S->crtc_id, S->props.crtc.out_fence_ptr, (uint64_t)&out_fence);
-
-	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_PAGE_FLIP_EVENT |
-	DRM_MODE_ATOMIC_NONBLOCK, S)) {
-		perror("atomic commit failed");
-		errlog("out_fence: %d", out_fence);
-		close(out_fence);
-	}
-	else {
-//		fprintf(stderr, "atomic commit success\n");
-//		errlog("out_fence: %d", out_fence);
-		S->listen_to_out_fence(out_fence, S->user_data2);
-		if (fb_id[!i])
-			drmModeRmFB(S->gpu_fd, fb_id[!i]);
-	}
-	drmModeAtomicFree(req);
-	i = !i;
-}

@@ -16,7 +16,6 @@
 #include <legacy_wl_drm.h> // legacy
 #include <backend/input.h>
 #include <backend/screen.h>
-#include <backend/direct.h>
 #include <backend/vulkan.h>
 #include <util/log.h>
 #include <core/compositor.h>
@@ -67,23 +66,25 @@ struct surface *focused_surface(struct server *server) {
 	return ms->surface;
 }
 
-void dmabuf(struct wl_resource *buffer, struct screen *screen) {
-	uint32_t width = wl_buffer_dmabuf_get_width(buffer);
-	uint32_t height = wl_buffer_dmabuf_get_height(buffer);
-	uint32_t format = wl_buffer_dmabuf_get_format(buffer);
-	int fd = wl_buffer_dmabuf_get_fds(buffer)[0];
-	int stride = wl_buffer_dmabuf_get_strides(buffer)[0];
-	int offset = wl_buffer_dmabuf_get_offsets(buffer)[0];
-	uint64_t mod = wl_buffer_dmabuf_get_mods(buffer)[0];
+void dmabuf(struct wl_resource *dmabuf_resource, struct screen *screen) {
+	uint32_t width = wl_buffer_dmabuf_get_width(dmabuf_resource);
+	uint32_t height = wl_buffer_dmabuf_get_height(dmabuf_resource);
+/*	uint32_t format = wl_buffer_dmabuf_get_format(dmabuf);
+	uint32_t num_planes = wl_buffer_dmabuf_get_num_planes(dmabuf);
+	uint32_t *strides = wl_buffer_dmabuf_get_strides(dmabuf);
+	uint32_t *offsets = wl_buffer_dmabuf_get_offsets(dmabuf);
+	uint64_t *mods = wl_buffer_dmabuf_get_mods(dmabuf);*/
 	// 1) TODO Copy window buffer to screen
 	// 2) schedule pageflip with new screen content
 	/*screen_post_direct(server_get_screen(surface->server),
 	width, height, format, fd, stride, offset, mod);*/
+	struct fb *fb = wl_buffer_dmabuf_get_subsystem_object(dmabuf_resource,
+	 SUBSYSTEM_DRM);
+
 	if (screen_is_overlay_supported(screen))
-		client_buffer_on_overlay(screen, width, height, format, fd,
-		 stride, offset, mod);
-	else
-		vulkan_main(1, fd, width, height, stride, mod);
+		client_buffer_on_overlay(screen, fb, width, height);
+//	else
+//		vulkan_main(1, fds[0], width, height, strides[0], mods[0]);
 }
 
 void shmbuf(struct wl_resource *buffer) {
@@ -136,7 +137,36 @@ void surface_unmap_notify(struct surface *surface, void *user_data) {
 	}
 }
 
+void surface_contents_update_notify(struct surface *surface, void *user_data) {
+	struct server *server = user_data;
+/*
+ * At this point `pending_page_flip` should always be false (unless the client
+ * commits more than one buffer update per signaled frame on purpose)
+ */
+	if (pending_page_flip)
+		errlog("ERROR: buffer already committed");
+	if (!pending_page_flip && surface->current->buffer && surface == focused_surface(server)) {
+		errlog("buffer committed");
+		struct wl_resource *buffer = surface->current->buffer;
+		struct screen *screen = server_get_screen(server);
+		if (wl_buffer_is_dmabuf(buffer))
+			dmabuf(buffer, screen);
+		else
+			shmbuf(buffer);
+		if (!screen_is_overlay_supported(screen) || !wl_buffer_is_dmabuf(buffer))
+			screen_post(screen, 0);
+//			NEEDED, screen refresh (scanout) happens automatically
+//			from the currently bound buffer only in one GPU
+/*
+ * Should be true only if the commit succeded
+ */
+		pending_page_flip = true;
+	}
+}
+
 void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *user_data) {
+	return;
+	errlog("xdg_surface_contents_update_notify");
 	struct server *server = user_data;
 	struct surface *surface = wl_resource_get_user_data(xdg_surface->surface);
 
@@ -160,6 +190,28 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
 //			from the currently bound buffer only in one GPU
 		pending_page_flip = true;
 	}
+}
+
+void buffer_dmabuf_create_notify(struct wl_buffer_dmabuf_data *dmabuf, void
+*user_data) {
+	errlog("buffer_dmabuf_create_notify");
+	struct server *server = user_data;
+	dmabuf->subsystem_object[SUBSYSTEM_DRM] = screen_fb_create_from_dmabuf(
+	 server->screen, dmabuf->width, dmabuf->height, dmabuf->format,
+	  dmabuf->num_planes, dmabuf->fds, dmabuf->offsets, dmabuf->strides,
+	   dmabuf->modifiers);
+/*	dmabuf->subsystem_object[SUBSYSTEM_VULKAN] = renderer_image_from_dmabuf(
+	 server->renderer, ...); */
+}
+
+void buffer_dmabuf_destroy_notify(struct wl_buffer_dmabuf_data *dmabuf, void
+*user_data) {
+	errlog("buffer_dmabuf_destroy_notify");
+	struct server *server = user_data;
+	struct fb *fb = dmabuf->subsystem_object[SUBSYSTEM_DRM];
+	screen_fb_destroy(server->screen, fb);
+/*	void *image = dmabuf->subsystem_object[SUBSYSTEM_VULKAN];
+	renderer_image_destroy(server->renderer, image); */
 }
 
 struct xdg_toplevel_data *match_app_id(struct server *server, char *name) {
@@ -327,6 +379,7 @@ version, uint32_t id) {
 	struct surface_events surface_events = {
 		.map = surface_map_notify,
 		.unmap = surface_unmap_notify,
+		.contents_update = surface_contents_update_notify,
 		.user_data = server
 	};
 	compositor_new(resource, surface_events);
@@ -386,10 +439,15 @@ version, uint32_t id) {
 
 static void zwp_linux_dmabuf_v1_bind(struct wl_client *client, void *data, uint32_t
 version, uint32_t id) {
-	bool *dmabuf_mod = data;
+	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&zwp_linux_dmabuf_v1_interface, version, id);
-	zwp_linux_dmabuf_v1_new(resource, *dmabuf_mod);
+	struct buffer_dmabuf_events buffer_dmabuf_events = {
+		.create = buffer_dmabuf_create_notify,
+		.destroy = buffer_dmabuf_destroy_notify,
+		.user_data = server
+	};
+	zwp_linux_dmabuf_v1_new(resource, buffer_dmabuf_events);
 }
 
 static void zwp_fullscreen_shell_v1_bind(struct wl_client *client, void *data, uint32_t
@@ -403,7 +461,7 @@ version, uint32_t id) {
 static bool global_filter(const struct wl_client *client, const struct wl_global
 *global, void *data) {
 /*	char *client_name = get_a_name((struct wl_client*)client);
-	bool condition = wl_global_get_interface(global) == &xdg_wm_base_interface;
+	bool condition = wl_global_get_interface(global) == &zwp_fullscreen_shell_v1_interface;
 	if (!strcmp(client_name, "weston-simple-d") && condition) {
 		free(client_name);
 		return false;
@@ -432,11 +490,7 @@ int main(int argc, char *argv[]) {
 	if (!server->screen)
 		return EXIT_FAILURE;
 
-	// maybe move to screen
-	struct box box = screen_get_dimensions(server->screen);
-	vulkan_create_screen_image(screen_get_bo_fd(server->screen), box.width,
-	box.height, screen_get_bo_stride(server->screen),
-	screen_get_bo_modifier(server->screen));
+	vulkan_create_screen_image(screen_get_fb_buffer(server->screen));
 
 	server->display = wl_display_create();
 	struct wl_display *D = server->display;
@@ -456,8 +510,8 @@ int main(int argc, char *argv[]) {
 /*	wl_global_create(D, &zxdg_shell_v6_interface, 1, server,
 	xdg_shell_v6_bind);*/
 	if (dmabuf)
-		wl_global_create(D, &zwp_linux_dmabuf_v1_interface, 3,
-		&dmabuf_mod, zwp_linux_dmabuf_v1_bind);
+		wl_global_create(D, &zwp_linux_dmabuf_v1_interface, 3, server,
+		 zwp_linux_dmabuf_v1_bind);
 	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
 	zwp_fullscreen_shell_v1_bind);
 
@@ -468,7 +522,7 @@ int main(int argc, char *argv[]) {
 	if (!server->input)
 		return EXIT_FAILURE;
 	
-	legacy_wl_drm_setup(D, screen_get_gbm_device(server->screen));
+	legacy_wl_drm_setup(D, screen_get_gpu_fd(server->screen));
 
 	struct wl_event_loop *el = wl_display_get_event_loop(D);
 	wl_event_loop_add_fd(el, screen_get_gpu_fd(server->screen),
@@ -499,7 +553,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	screen_post(server->screen, 0);
+//	screen_post(server->screen, 0);
 
 	wl_display_run(D);
 

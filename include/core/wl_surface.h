@@ -9,10 +9,12 @@
 struct surface;
 typedef void (*surface_map_t)(struct surface *, void *);
 typedef void (*surface_unmap_t)(struct surface *, void *);
+typedef void (*surface_contents_update_t)(struct surface *, void *);
 
 struct surface_events {
 	surface_map_t map;
 	surface_unmap_t unmap;
+	surface_contents_update_t contents_update;
 
 	void *user_data;
 };
@@ -22,13 +24,14 @@ enum role {
 	ROLE_CURSOR,
 	ROLE_DRAG_AND_DROP_ICON,
 	ROLE_SUBSURFACE,
-	ROLE_XDG_POPUP,
-	ROLE_XDG_TOPLEVEL
+	ROLE_FULLSCREEN,      // from fullscreen-shell
+	ROLE_XDG_POPUP,       // from xdg-shell
+	ROLE_XDG_TOPLEVEL     // from xdg-shell
 };
 
 enum base_role {
 	BASE_ROLE_NONE,
-	BASE_ROLE_XDG_SURFACE
+	BASE_ROLE_XDG_SURFACE // from xdg-shell
 };
 
 /*

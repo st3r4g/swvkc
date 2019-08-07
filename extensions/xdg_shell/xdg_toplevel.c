@@ -105,8 +105,6 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 		surface->surface_events.map(surface,
 		 surface->surface_events.user_data);
 		surface->is_mapped = true;
-		errlog("%d", surface->is_mapped);
-		errlog("%p", surface);
 	}
 }
 

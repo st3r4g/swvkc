@@ -9,7 +9,7 @@ c = 'core/'
 u = 'util/'
 x = 'extensions/'
 
-src = [b+'input.c', b+'screen.c', b+'vulkan.c', b+'direct.c']
+src = [b+'bufmgr_gbm.c', b+'input.c', b+'screen.c', b+'vulkan.c']
 src += [c+'compositor.c', c+'data_device_manager.c', c+'keyboard.c',
 	c+'output.c', c+'wl_pointer.c', c+'region.c', c+'seat.c',
 	c+'wl_subcompositor.c', c+'wl_subsurface.c', c+'wl_surface.c']
@@ -60,13 +60,14 @@ foreach p : protocols
 endforeach
 
 dep = [wayland_protocols]
-dep += dependency('egl') # required for legacy wl_drm
-dep += dependency('gbm')
-dep += dependency('libdrm')
-dep += dependency('libudev')
-dep += dependency('vulkan')
 dep += dependency('wayland-server')
+dep += dependency('vulkan')
+dep += dependency('libdrm')
 dep += dependency('xkbcommon')
+dep += dependency('libudev')
+dep += dependency('egl') # required for legacy wl_drm
+dep += dependency('gbm') # required for legacy wl_drm and for bufmgr_gbm
+#dep += dependency('libdrm_intel') # required for bufmgr_intel
 
 inc = include_directories('include')
 

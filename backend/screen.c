@@ -8,10 +8,11 @@
 #include <unistd.h>
 
 #include <drm_fourcc.h>
-#include <gbm.h>
 #include <libudev.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+
+#include <backend/bufmgr.h>
 
 #include <util/log.h>
 #include <util/my_drm_handle_event.h>
@@ -46,6 +47,11 @@ struct props {
 	} crtc;
 };
 
+struct fb {
+	uint32_t id;
+	struct buffer *buffer;
+};
+
 struct screen {
 	// DRM
 	int gpu_fd;
@@ -59,10 +65,8 @@ struct screen {
 
 	struct props props;
 
-	// GBM
-	struct gbm_device *gbm_device;
-	struct gbm_surface *gbm_surface;
-	struct gbm_bo *gbm_bo;
+	struct bufmgr *bufmgr;
+	struct fb *fb; // The main framebuffer
 
 	// vblank callback
 	void (*vblank_notify)(int,unsigned int,unsigned int, unsigned int,
@@ -76,7 +80,7 @@ struct screen {
 };
 
 int drm_setup(struct screen *);
-int gbm_setup(struct screen *, bool dmabuf_mod);
+struct fb *screen_fb_create_main(struct screen *screen, int width, int height);
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
 unsigned int, void*, bool), void *user_data, void (*listen_to_out_fence)(int,
@@ -87,7 +91,10 @@ void*), void *user_data2, bool dmabuf_mod) {
 	screen->listen_to_out_fence = listen_to_out_fence;
 	screen->user_data2 = user_data2;
 	drm_setup(screen);
-	gbm_setup(screen, dmabuf_mod);
+	screen->bufmgr = bufmgr_create(screen->gpu_fd);
+	struct box screen_size = screen_get_dimensions(screen);
+	screen->fb = screen_fb_create_main(screen, screen_size.width,
+	 screen_size.height);
 
 	return screen;
 }
@@ -272,40 +279,6 @@ int drm_setup(struct screen *S) {
 	return 0;
 }
 
-int gbm_setup(struct screen *S, bool dmabuf_mod) {
-	S->gbm_device = gbm_create_device(S->gpu_fd);
-	if (!S->gbm_device) {
-		fprintf(stderr, "gbm_create_device failed\n");
-		return 1;
-	}
-
-	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
-/*	if (!dmabuf_mod) XXX: otherwise GBM creates a bad bo for scanout
-		flags |= GBM_BO_USE_LINEAR;*/
-
-	int ret = gbm_device_is_format_supported(S->gbm_device,
-	GBM_BO_FORMAT_XRGB8888, flags);
-	if (!ret) {
-		fprintf(stderr, "format unsupported\n");
-		return 1;
-	}
-
-	struct box screen_size = screen_get_dimensions(S);
-	S->gbm_bo = gbm_bo_create(S->gbm_device, screen_size.width,
-	screen_size.height, GBM_BO_FORMAT_XRGB8888, flags);
-/*	uint64_t modifier = I915_FORMAT_MOD_X_TILED;
-	S->gbm_bo = gbm_bo_create_with_modifiers(S->gbm_device,
-			screen_size.width, screen_size.height,
-			GBM_BO_FORMAT_XRGB8888, &modifier, 1);*/
-	if (!S->gbm_bo) {
-		fprintf(stderr, "gbm_bo_create failed\n");
-		return 1;
-	}
-
-	return 0;
-}
-
-
 static void vblank_handler(int fd, unsigned int sequence, unsigned int tv_sec,
 unsigned int tv_usec, void *user_data) {
 	struct screen *screen = user_data;
@@ -336,37 +309,54 @@ void drm_handle_event(int fd) {
 	my_drmHandleEvent(fd, &ev_context);
 }
 
+void client_buffer_on_overlay(struct screen *S, struct fb *fb, uint32_t width,
+uint32_t height) {
+
+	drmModeAtomicReq *req = drmModeAtomicAlloc();
+	if (!req)
+		fprintf(stderr, "atomic allocation failed\n");
+
+	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_x, 0 << 16); // SRC_X
+	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_y, 0 << 16); // SRC_Y
+	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_w, width << 16); // SRC_W
+	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_h, height << 16); // SRC_H
+	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_x, 0); // CRTC_X
+	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_y, 0); // CRTC_Y
+	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_w, width); // CRTC_W
+	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_h, height); // CRTC_H
+	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_id, S->crtc_id); // CRTC_ID
+
+	if (drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.fb_id, fb_get_id(fb)) < 0)
+		fprintf(stderr, "atomic add property failed\n");
+
+	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_ATOMIC_TEST_ONLY |
+	DRM_MODE_ATOMIC_ALLOW_MODESET, 0))
+	perror("test failed");
+	else {
+//	fprintf(stderr, "test success\n");
+	}
+
+	int out_fence = -1;
+	drmModeAtomicAddProperty(req, S->crtc_id, S->props.crtc.out_fence_ptr, (uint64_t)&out_fence);
+
+	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_PAGE_FLIP_EVENT |
+	DRM_MODE_ATOMIC_NONBLOCK, S)) {
+		perror("atomic commit failed");
+		errlog("out_fence: %d", out_fence);
+		close(out_fence);
+	}
+	else {
+		fprintf(stderr, "atomic commit success\n");
+//		errlog("out_fence: %d", out_fence);
+		S->listen_to_out_fence(out_fence, S->user_data2);
+	}
+	drmModeAtomicFree(req);
+}
+
 void screen_post(struct screen *S, int fence_fd) {
 	drmModeAtomicReq *req = drmModeAtomicAlloc();
-	struct gbm_bo *bo = S->gbm_bo;
-	uint32_t bo_width = gbm_bo_get_width(bo);
-	uint32_t bo_height = gbm_bo_get_height(bo);
-
-	uint32_t bo_handles[4] = {0};
-	uint32_t bo_strides[4] = {0};
-	uint32_t bo_offsets[4] = {0};
-	uint64_t bo_modifiers[4] = {0};
-	for (int j = 0; j < gbm_bo_get_plane_count(bo); j++) {
-		bo_handles[j] = gbm_bo_get_handle_for_plane(bo, j).u32;
-		bo_strides[j] = gbm_bo_get_stride_for_plane(bo, j);
-		bo_offsets[j] = gbm_bo_get_offset(bo, j);
-		// KMS requires all BO planes to have the same modifier
-		bo_modifiers[j] = gbm_bo_get_modifier(bo);
-	}
-
-//	uint32_t handle = gbm_bo_get_handle(bo).u32;
-	uint32_t bo_format = gbm_bo_get_format(bo);
-
-/*	if (drmModeAddFB2WithModifiers(S->gpu_fd, width, height, COLOR_DEPTH, BIT_PER_PIXEL,
-	stride, handle, &S->fb_id[i])) {*/
-	uint32_t fb_id;
-	if (drmModeAddFB2WithModifiers(S->gpu_fd, bo_width, bo_height, bo_format,
-	bo_handles, bo_strides, bo_offsets, bo_modifiers, &fb_id, DRM_MODE_FB_MODIFIERS)) {
-		perror("AddFB");
-	}
-
 	if (drmModeAtomicAddProperty(req, S->plane_id,
-	S->props_plane_fb_id, fb_id) < 0)
+	S->props_plane_fb_id, fb_get_id(S->fb)) < 0)
 		fprintf(stderr, "atomic add property failed\n");
 	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_PAGE_FLIP_EVENT |
 	DRM_MODE_ATOMIC_NONBLOCK, S))
@@ -383,22 +373,6 @@ int screen_get_gpu_fd(struct screen *S) {
 	return S->gpu_fd;
 }
 
-int screen_get_bo_fd(struct screen *S) {
-	return gbm_bo_get_fd(S->gbm_bo);
-}
-
-uint32_t screen_get_bo_stride(struct screen *S) {
-	return gbm_bo_get_stride(S->gbm_bo);
-}
-
-uint64_t screen_get_bo_modifier(struct screen *S) {
-	return gbm_bo_get_modifier(S->gbm_bo);
-}
-
-struct gbm_device *screen_get_gbm_device(struct screen *S) {
-	return S->gbm_device;
-}
-
 struct box screen_get_dimensions(struct screen *S) {
 	struct box box;
 	drmModeFB *old_fb = drmModeGetFB(S->gpu_fd, S->old_fb_id);
@@ -407,8 +381,73 @@ struct box screen_get_dimensions(struct screen *S) {
 	return box;
 }
 
+struct gbm_device *screen_get_gbm_device(struct screen *screen) {
+	return bufmgr_get_gbm_device(screen->bufmgr);
+}
+
+struct buffer *screen_get_fb_buffer(struct screen *screen) {
+	return screen->fb->buffer;
+}
+
 bool screen_is_overlay_supported(struct screen *S) {
 	return S->overlay_plane_id > 0;
+}
+
+struct fb *screen_fb_create(struct screen *screen, struct buffer *buffer) {
+	uint32_t width = buffer_get_width(buffer);
+	uint32_t height = buffer_get_height(buffer);
+	uint32_t format = buffer_get_format(buffer);
+
+	uint32_t handles[4] = {0};
+	uint32_t strides[4] = {0};
+	uint32_t offsets[4] = {0};
+	uint64_t modifier[4] = {0};
+	for (size_t i=0; i < buffer_get_plane_count(buffer); i++) {
+		handles[i] = buffer_get_handle(buffer, i);
+		strides[i] = buffer_get_stride(buffer, i);
+		offsets[i] = buffer_get_offset(buffer, i);
+		modifier[i] = buffer_get_modifier(buffer);
+	}
+
+	// hack
+	format = format == DRM_FORMAT_ARGB8888 ? DRM_FORMAT_XRGB8888 : format;
+
+	uint32_t buf_id;
+	if (drmModeAddFB2WithModifiers(screen->gpu_fd, width, height, format,
+	 handles, strides, offsets, modifier, &buf_id, DRM_MODE_FB_MODIFIERS)) {
+		perror("AddFB");
+		return NULL;
+	}
+
+	struct fb *fb = malloc(sizeof(fb));
+	fb->id = buf_id;
+	fb->buffer = buffer;
+	return fb;
+}
+
+struct fb *screen_fb_create_main(struct screen *screen, int width, int height) {
+	struct buffer *buffer = bufmgr_buffer_create(screen->bufmgr, width, height);
+	if (!buffer)
+		return NULL;
+	return screen_fb_create(screen, buffer);
+}
+
+struct fb *screen_fb_create_from_dmabuf(struct screen *screen, int32_t width,
+int32_t height, uint32_t format, uint32_t num_planes, int32_t *fds, uint32_t
+*offsets, uint32_t *strides, uint64_t *modifiers) {
+	struct buffer *buffer = bufmgr_buffer_import_from_dmabuf(screen->bufmgr,
+	 num_planes, fds, width, height, format, strides, offsets, modifiers[0]);
+	return screen_fb_create(screen, buffer);
+}
+
+uint32_t fb_get_id(struct fb *fb) {
+	return fb->id;
+}
+
+void screen_fb_destroy(struct screen *screen, struct fb *fb) {
+	buffer_destroy(fb->buffer);
+	drmModeRmFB(screen->gpu_fd, fb->id);
+	free(fb);
 }
 
 void screen_release(struct screen *S) {
@@ -419,7 +458,8 @@ void screen_release(struct screen *S) {
 		perror("atomic commit failed");
 	
 	drmModeAtomicFree(req);
-//	drmModeRmFB(S->gpu_fd, S->fb.id);
+	screen_fb_destroy(S, S->fb);
+	bufmgr_destroy(S->bufmgr);
 	close(S->gpu_fd);
 	free(S);
 }

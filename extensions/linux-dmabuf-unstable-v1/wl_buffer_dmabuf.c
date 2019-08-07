@@ -1,11 +1,12 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include <stdlib.h>
-#include <unistd.h>
+#include <extensions/linux-dmabuf-unstable-v1/wl_buffer_dmabuf.h>
 
 #include <wayland-server-protocol.h>
 
-#include <extensions/linux-dmabuf-unstable-v1/wl_buffer_dmabuf.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 static void destroy(struct wl_client *client, struct wl_resource *resource) {
 	wl_resource_destroy(resource);
@@ -14,19 +15,26 @@ static void destroy(struct wl_client *client, struct wl_resource *resource) {
 static const struct wl_buffer_interface impl = {destroy};
 
 static void free_data(struct wl_resource *resource) {
-	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
-	for (size_t i=0; i<data->num_planes; i++)
-		close(data->fds[i]);
-	free(data->fds);
-	free(data->offsets);
-	free(data->strides);
-	free(data->modifiers);
-	free(data);
+	struct wl_buffer_dmabuf_data *dmabuf = wl_resource_get_user_data(resource);
+/*
+ * buffer_dmabuf will be destroyed, notify subsystems for cleaning
+ */
+	if (dmabuf->buffer_dmabuf_events.destroy)
+		dmabuf->buffer_dmabuf_events.destroy(dmabuf,
+		 dmabuf->buffer_dmabuf_events.user_data);
+
+	for (size_t i=0; i<dmabuf->num_planes; i++)
+		close(dmabuf->fds[i]);
+	free(dmabuf->fds);
+	free(dmabuf->offsets);
+	free(dmabuf->strides);
+	free(dmabuf->modifiers);
+	free(dmabuf);
 }
 
 struct wl_buffer_dmabuf_data *wl_buffer_dmabuf_new(struct wl_resource *resource,
 int32_t width, int32_t height, uint32_t format, uint32_t flags, uint32_t
-num_planes) {
+num_planes, struct buffer_dmabuf_events buffer_dmabuf_events) {
 	struct wl_buffer_dmabuf_data *dmabuf = malloc(sizeof(*dmabuf));
 	dmabuf->width = width;
 	dmabuf->height = height;
@@ -37,6 +45,8 @@ num_planes) {
 	dmabuf->offsets = malloc(num_planes*sizeof(uint32_t));
 	dmabuf->strides = malloc(num_planes*sizeof(uint32_t));
 	dmabuf->modifiers = malloc(num_planes*sizeof(uint64_t));
+	dmabuf->buffer_dmabuf_events = buffer_dmabuf_events;
+	memset(dmabuf->subsystem_object, 0, sizeof(dmabuf->subsystem_object));
 	wl_resource_set_implementation(resource, &impl, dmabuf, free_data);
 	return dmabuf;
 }
@@ -65,11 +75,6 @@ uint32_t wl_buffer_dmabuf_get_num_planes(struct wl_resource *resource) {
 	return data->num_planes;
 }
 
-int32_t *wl_buffer_dmabuf_get_fds(struct wl_resource *resource) {
-	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
-	return data->fds;
-}
-
 uint32_t *wl_buffer_dmabuf_get_offsets(struct wl_resource *resource) {
 	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
 	return data->offsets;
@@ -85,12 +90,8 @@ uint64_t *wl_buffer_dmabuf_get_mods(struct wl_resource *resource) {
 	return data->modifiers;
 }
 
-/*uint32_t wl_buffer_dmabuf_get_mod_lo(struct wl_resource *resource) {
+void *wl_buffer_dmabuf_get_subsystem_object(struct wl_resource *resource, enum
+subsystem subsystem) {
 	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
-	return data->modifier & 0xFFFFFFFF;
+	return data->subsystem_object[subsystem];
 }
-
-uint32_t wl_buffer_dmabuf_get_mod_hi(struct wl_resource *resource) {
-	struct wl_buffer_dmabuf_data *data = wl_resource_get_user_data(resource);
-	return data->modifier >> 32;
-}*/

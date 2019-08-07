@@ -1,18 +1,22 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include <core/wl_surface.h>
 #include <util/log.h>
 
 #include <fullscreen-shell-unstable-v1-server-protocol.h>
-//#include <extensions/linux-dmabuf-unstable-v1/zwp_linux_buffer_params_v1.h>
 
 static void release(struct wl_client *client, struct wl_resource *resource) {
 	wl_resource_destroy(resource);
 }
 
 static void present_surface(struct wl_client *client, struct wl_resource
-*resource, struct wl_resource *surface, uint32_t method, struct wl_resource
-*output) {
+*resource, struct wl_resource *surface_resource, uint32_t method, struct
+wl_resource *output) {
 	errlog("PRESENT SURFACE");
+	struct surface *surface = wl_resource_get_user_data(surface_resource);
+	surface->role = ROLE_FULLSCREEN;
+	surface->surface_events.map(surface, surface->surface_events.user_data);
+	surface->is_mapped = true;
 }
 
 static void present_surface_for_mode(struct wl_client *client, struct
