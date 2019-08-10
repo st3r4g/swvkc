@@ -5,6 +5,9 @@
 
 /*
  * Implementation of the buffer manager via GBM
+ *
+ * ISSUES:
+ * weston-simple-dmabuf-v4l: buffer_get_plane_count returns 2
  */
 
 struct bufmgr {

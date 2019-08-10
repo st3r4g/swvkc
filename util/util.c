@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 static enum wl_iterator_result find_keyboard(struct wl_resource *resource,
 void *user_data) {
@@ -60,4 +62,27 @@ char *get_a_name(struct wl_client *client) {
 	char path[64];
 	sprintf(path, "/proc/%d/comm", pid);
 	return read_file(path);
+}
+
+void dmabuf_save_to_disk(int fd) {
+	const int size = lseek(fd, 0, SEEK_END);
+	lseek(fd, 0, SEEK_SET);
+	unsigned char *buffer = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+	if (buffer == MAP_FAILED) {
+		perror("ERROR");
+		return;
+	}
+//	for (int i=5504*768-60; i<5504*768-30; i++)
+//		errlog("[%d] byte %i: %x", size, i, buffer[i]);
+//	errlog("size %d", );
+	FILE* file = fopen("image.data", "w");
+	fwrite(buffer, size, 1, file);
+	fclose(file);
+	munmap(buffer, size);
+	/*const int size = 1366*768*4;
+	char *buffer = malloc(size);
+	read(fd, buffer, 256);
+	for (int i=0; i<256; i++)
+		errlog("%d", buffer[i]);
+	free(buffer);*/
 }

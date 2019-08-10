@@ -266,6 +266,13 @@ VkImage create_image(int32_t width, int32_t height, uint32_t stride, uint64_t mo
 		fprintf(stderr, "ERROR: create_image() failed.\n");
 		return VK_NULL_HANDLE;
 	}
+	VkImageSubresource subresource = {
+		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.mipLevel = 0,
+		.arrayLayer = 0
+	};
+	vkGetImageSubresourceLayout(dev, img, &subresource, &layout);
+	errlog("Vulkan stride: %d", layout.rowPitch);
 	return img;
 }
 

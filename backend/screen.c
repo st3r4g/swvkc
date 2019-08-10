@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include <backend/screen.h>
 
+#include <wayland-util.h> // just for wl_list
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +17,7 @@
 #include <backend/bufmgr.h>
 
 #include <util/log.h>
+#include <util/util.h>
 #include <util/my_drm_handle_event.h>
 
 // GBM formats are either GBM_BO_FORMAT_XRGB8888 or GBM_BO_FORMAT_ARGB8888
@@ -52,6 +55,11 @@ struct fb {
 	struct buffer *buffer;
 };
 
+struct fb_node {
+	struct fb *fb;
+	struct wl_list link;
+};
+
 struct screen {
 	// DRM
 	int gpu_fd;
@@ -68,6 +76,8 @@ struct screen {
 	struct bufmgr *bufmgr;
 	struct fb *fb; // The main framebuffer
 
+	struct wl_list fb_destroy_list;
+
 	// vblank callback
 	void (*vblank_notify)(int,unsigned int,unsigned int, unsigned int,
 	void*, bool);
@@ -81,11 +91,13 @@ struct screen {
 
 int drm_setup(struct screen *);
 struct fb *screen_fb_create_main(struct screen *screen, int width, int height);
+void screen_fb_destroy(struct screen *screen, struct fb *fb);
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
 unsigned int, void*, bool), void *user_data, void (*listen_to_out_fence)(int,
 void*), void *user_data2, bool dmabuf_mod) {
 	struct screen *screen = calloc(1, sizeof(struct screen));
+	wl_list_init(&screen->fb_destroy_list);
 	screen->vblank_notify = vblank_notify;
 	screen->user_data = user_data;
 	screen->listen_to_out_fence = listen_to_out_fence;
@@ -291,9 +303,21 @@ unsigned int tv_usec, void *user_data) {
 	screen->vblank_has_page_flip = false;
 }
 
+uint32_t active_fb(int fd, uint32_t plane_id);
+
 static void page_flip_handler(int fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data) {
 	struct screen *screen = user_data;
+
+	struct fb_node *fb_node, *tmp;
+	wl_list_for_each_safe(fb_node, tmp, &screen->fb_destroy_list, link) {
+		if (fb_node->fb->id != active_fb(screen->gpu_fd, screen->overlay_plane_id)) {
+			screen_fb_destroy(screen, fb_node->fb);
+			wl_list_remove(&fb_node->link);
+			free(fb_node);
+		}
+	}
+
 	screen->vblank_has_page_flip = true;
 }
 
@@ -346,7 +370,7 @@ uint32_t height) {
 		close(out_fence);
 	}
 	else {
-		fprintf(stderr, "atomic commit success\n");
+//		fprintf(stderr, "atomic commit success\n");
 //		errlog("out_fence: %d", out_fence);
 		S->listen_to_out_fence(out_fence, S->user_data2);
 	}
@@ -415,7 +439,7 @@ struct fb *screen_fb_create(struct screen *screen, struct buffer *buffer) {
 	uint32_t buf_id;
 	if (drmModeAddFB2WithModifiers(screen->gpu_fd, width, height, format,
 	 handles, strides, offsets, modifier, &buf_id, DRM_MODE_FB_MODIFIERS)) {
-		perror("AddFB");
+		perror("drmModeAddFB2WithModifiers");
 		return NULL;
 	}
 
@@ -448,6 +472,12 @@ void screen_fb_destroy(struct screen *screen, struct fb *fb) {
 	buffer_destroy(fb->buffer);
 	drmModeRmFB(screen->gpu_fd, fb->id);
 	free(fb);
+}
+
+void screen_fb_schedule_destroy(struct screen *screen, struct fb *fb) {
+	struct fb_node *fb_node = malloc(sizeof(struct fb_node));
+	fb_node->fb = fb;
+	wl_list_insert(&screen->fb_destroy_list, &fb_node->link);
 }
 
 void screen_release(struct screen *S) {
@@ -556,4 +586,11 @@ struct props find_prop_ids(int fd, uint32_t plane_id, uint32_t conn_id, uint32_t
 	drmModeFreeObjectProperties(obj_props);
 
 	return props;
+}
+
+uint32_t active_fb(int fd, uint32_t plane_id) {
+	drmModePlane *plane = drmModeGetPlane(fd, plane_id);
+	uint32_t fb_id = plane->fb_id;
+	drmModeFreePlane(plane);
+	return fb_id;
 }

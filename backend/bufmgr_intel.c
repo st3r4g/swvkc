@@ -63,7 +63,7 @@ struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height) 
 	buffer->width = width;
 	buffer->height = height;
 /*
- * I'll guess the format here...
+ * I can choose a format with bpp = 32
  */
 	buffer->format = DRM_FORMAT_XRGB8888;
 	buffer->bo_count = 1;
@@ -106,7 +106,6 @@ uint64_t modifier) {
 			return NULL;
 		}
 	}
-	printf("good import\n");
 	struct buffer *buffer = malloc(sizeof(struct buffer));
 	buffer->width = width;
 	buffer->height = height;

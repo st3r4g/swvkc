@@ -134,7 +134,6 @@ void xdg_toplevel_new(struct wl_resource *resource, struct xdg_surface0
 	toplevel_data->xdg_surface_data = xdg_surface_data;
 	struct surface *surface_data =
 	wl_resource_get_user_data(xdg_surface_data->surface);
-	errlog("%p", surface_data);
 	toplevel_data->commit.notify = commit_notify;
 	wl_signal_add(&surface_data->commit, &toplevel_data->commit);
 	toplevel_data->app_id = get_a_name(wl_resource_get_client(resource));

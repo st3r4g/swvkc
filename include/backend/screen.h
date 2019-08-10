@@ -38,6 +38,7 @@ uint32_t height);
 
 uint32_t fb_get_id(struct fb *fb);
 void screen_fb_destroy(struct screen *screen, struct fb *fb);
+void screen_fb_schedule_destroy(struct screen *screen, struct fb *fb);
 
 void screen_release(struct screen *);
 

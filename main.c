@@ -97,6 +97,8 @@ void shmbuf(struct wl_resource *buffer) {
 	wl_shm_buffer_begin_access(shm_buffer);
 	vulkan_render_shm_buffer(width, height, stride, format, data);
 	wl_shm_buffer_end_access(shm_buffer);
+
+//	wl_buffer_send_release(buffer); // XXX 1
 }
 
 /*
@@ -146,7 +148,6 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 	if (pending_page_flip)
 		errlog("ERROR: buffer already committed");
 	if (!pending_page_flip && surface->current->buffer && surface == focused_surface(server)) {
-		errlog("buffer committed");
 		struct wl_resource *buffer = surface->current->buffer;
 		struct screen *screen = server_get_screen(server);
 		if (wl_buffer_is_dmabuf(buffer))
@@ -160,7 +161,7 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 /*
  * Should be true only if the commit succeded
  */
-		pending_page_flip = true;
+		pending_page_flip = true; //XXX 2
 	}
 }
 
@@ -194,7 +195,6 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
 
 void buffer_dmabuf_create_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 *user_data) {
-	errlog("buffer_dmabuf_create_notify");
 	struct server *server = user_data;
 	dmabuf->subsystem_object[SUBSYSTEM_DRM] = screen_fb_create_from_dmabuf(
 	 server->screen, dmabuf->width, dmabuf->height, dmabuf->format,
@@ -206,10 +206,9 @@ void buffer_dmabuf_create_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 
 void buffer_dmabuf_destroy_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 *user_data) {
-	errlog("buffer_dmabuf_destroy_notify");
 	struct server *server = user_data;
 	struct fb *fb = dmabuf->subsystem_object[SUBSYSTEM_DRM];
-	screen_fb_destroy(server->screen, fb);
+	screen_fb_schedule_destroy(server->screen, fb);
 /*	void *image = dmabuf->subsystem_object[SUBSYSTEM_VULKAN];
 	renderer_image_destroy(server->renderer, image); */
 }
@@ -310,6 +309,7 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 		if (surface->current->previous_buffer)
 			wl_buffer_send_release(surface->current->previous_buffer);
 	}
+
 	pending_page_flip = false;
 	return 0;
 }
