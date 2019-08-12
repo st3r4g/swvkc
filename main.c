@@ -50,20 +50,23 @@ struct server {
 	struct wl_list seat_list;
 
 	struct wl_list xdg_surface_list;
+/*
+ * Temporary way to manage surfaces, it should evolve into a tree
+ */
 	struct wl_list mapped_surfaces_list;
 
 	struct wl_event_source *event;
 };
 
-struct mapped_surface {
+struct surface_node {
 	struct surface *surface;
 	struct wl_list link;
 };
 
 struct surface *focused_surface(struct server *server) {
-	struct mapped_surface *ms;
-	ms = wl_container_of(server->mapped_surfaces_list.next, ms, link);
-	return ms->surface;
+	struct surface_node *node;
+	node = wl_container_of(server->mapped_surfaces_list.next, node, link);
+	return node->surface;
 }
 
 void dmabuf(struct wl_resource *dmabuf_resource, struct screen *screen) {
@@ -113,9 +116,9 @@ void surface_map_notify(struct surface *surface, void *user_data) {
 		wl_keyboard_send_leave(x->keyboard, 0, x->surface);
 	}
 	errlog("A surface has been mapped");
-	struct mapped_surface *new = malloc(sizeof(struct mapped_surface));
-	new->surface = surface;
-	wl_list_insert(&server->mapped_surfaces_list, &new->link);
+	struct surface_node *node = malloc(sizeof(struct surface_node));
+	node->surface = surface;
+	wl_list_insert(&server->mapped_surfaces_list, &node->link);
 }
 
 void surface_unmap_notify(struct surface *surface, void *user_data) {
@@ -124,12 +127,12 @@ void surface_unmap_notify(struct surface *surface, void *user_data) {
 	/*
 	 * Is there a way to remove it without going through the list?
 	 */
-	struct mapped_surface *ms;
-	wl_list_for_each(ms, &server->mapped_surfaces_list, link)
-		if (ms->surface == surface)
+	struct surface_node *node;
+	wl_list_for_each(node, &server->mapped_surfaces_list, link)
+		if (node->surface == surface)
 			break;
-	wl_list_remove(&ms->link);
-	free(ms);
+	wl_list_remove(&node->link);
+	free(node);
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct wl_array array;
 		wl_array_init(&array); //Need the currently pressed keys
@@ -149,7 +152,7 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 		errlog("ERROR: buffer already committed");
 	if (!pending_page_flip && surface->current->buffer && surface == focused_surface(server)) {
 		struct wl_resource *buffer = surface->current->buffer;
-		struct screen *screen = server_get_screen(server);
+		struct screen *screen = server->screen;
 		if (wl_buffer_is_dmabuf(buffer))
 			dmabuf(buffer, screen);
 		else
@@ -180,7 +183,7 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
 	if (!pending_page_flip && surface->current->buffer && surface == focused_surface(server)) {
 //		errlog("buffer committed");
 		struct wl_resource *buffer = surface->current->buffer;
-		struct screen *screen = server_get_screen(server);
+		struct screen *screen = server->screen;
 		if (wl_buffer_is_dmabuf(buffer))
 			dmabuf(buffer, screen);
 		else
@@ -191,6 +194,21 @@ void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *
 //			from the currently bound buffer only in one GPU
 		pending_page_flip = true;
 	}
+}
+
+void xdg_toplevel_init_notify(struct xdg_toplevel_data *xdg_toplevel, void
+*user_data) {
+	struct server *server = user_data;
+	struct wl_array array;
+	wl_array_init(&array);
+	int32_t *state1 = wl_array_add(&array, sizeof(int32_t));
+	*state1 = XDG_TOPLEVEL_STATE_ACTIVATED;
+	int32_t *state2 = wl_array_add(&array, sizeof(int32_t));
+	*state2 = XDG_TOPLEVEL_STATE_MAXIMIZED;
+	struct box screen_size = screen_get_dimensions(server->screen);
+	xdg_toplevel_send_configure(xdg_toplevel->resource, screen_size.width,
+	screen_size.height, &array);
+	xdg_surface_send_configure(xdg_toplevel->xdg_surface_data->self, 0);
 }
 
 void buffer_dmabuf_create_notify(struct wl_buffer_dmabuf_data *dmabuf, void
@@ -213,12 +231,15 @@ void buffer_dmabuf_destroy_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 	renderer_image_destroy(server->renderer, image); */
 }
 
-struct xdg_toplevel_data *match_app_id(struct server *server, char *name) {
-	struct xdg_toplevel_data *data, *match;
+struct surface_node *match_app_id(struct server *server, char *name) {
+	struct surface_node *node, *match;
 	int i = 0;
-	wl_list_for_each(data, &server->mapped_surfaces_list, link) {
+	wl_list_for_each(node, &server->mapped_surfaces_list, link) {
+		if (node->surface->role != ROLE_XDG_TOPLEVEL)
+			continue;
+		struct xdg_toplevel_data *data = node->surface->role_object;
 		if (!strncasecmp(name, data->app_id, strlen(name)))
-			match = data, i++;
+			match = node, i++;
 	}
 	if (i == 1)
 		return match;
@@ -256,7 +277,7 @@ void server_window_destroy(struct xdg_toplevel_data *old) {
 void server_set_focus(struct xdg_toplevel_data *data) {
 }
 
-void server_change_focus(struct xdg_toplevel_data *data) {
+void server_change_focus(struct server *self, struct surface_node *node) {
 /*	errlog("focused window: %s", focused->app_id);
 	errlog("new window: %s", data->app_id);
 	struct xdg_surface0 *old = focused->xdg_surface_data;
@@ -268,6 +289,15 @@ void server_change_focus(struct xdg_toplevel_data *data) {
 	if (new->self)
 		wl_keyboard_send_enter(new->keyboard, 0, new->surface, &array);
 	focused = data;*/
+	struct surface *focused = focused_surface(self);
+	struct xdg_surface0 *x = focused->base_role_object;
+	wl_keyboard_send_leave(x->keyboard, 0, x->surface);
+	wl_list_remove(&node->link);
+	wl_list_insert(&self->mapped_surfaces_list, &node->link);
+	struct wl_array array;
+	wl_array_init(&array); //Need the currently pressed keys
+	struct xdg_surface0 *x2 = node->surface->base_role_object;
+	wl_keyboard_send_enter(x2->keyboard, 0, x2->surface, &array);
 }
 
 struct screen *server_get_screen(struct server *server) {
@@ -353,10 +383,10 @@ static int key_ev_handler(int key_fd, uint32_t mask, void *data) {
 			errlog("the key '%s' was pressed", aaa.name);
 			name[i] = aaa.name[0];
 			i++;
-			struct xdg_toplevel_data *match = match_app_id(server, name);
+			struct surface_node *match = match_app_id(server, name);
 			errlog("match %p", (void*)match);
 			if (match)
-				server_change_focus(match);
+				server_change_focus(server, match);
 		} else if (!wl_list_empty(&server->mapped_surfaces_list)) {
 			struct surface *surface = focused_surface(server);
 			struct xdg_surface0 *xdg_surface = surface->base_role_object;
@@ -425,7 +455,11 @@ version, uint32_t id) {
 		.xdg_surface_contents_update = xdg_surface_contents_update_notify,
 		.user_data = server
 	};
-	xdg_wm_base_new(resource, server, xdg_shell_events);
+	struct xdg_toplevel_events xdg_toplevel_events = {
+		.init = xdg_toplevel_init_notify,
+		.user_data = server
+	};
+	xdg_wm_base_new(resource, server, xdg_shell_events, xdg_toplevel_events);
 }
 
 /*static void xdg_shell_v6_bind(struct wl_client *client, void *data, uint32_t

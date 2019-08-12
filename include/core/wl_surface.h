@@ -6,6 +6,13 @@
 
 #include <util/box.h>
 
+/*
+ * A surface is the fundamental Wayland object involved in presentation of
+ * client-provided content to the display.
+ * The compositor can access only those surfaces that are added to the surface
+ * tree
+ */
+
 struct surface;
 typedef void (*surface_map_t)(struct surface *, void *);
 typedef void (*surface_unmap_t)(struct surface *, void *);

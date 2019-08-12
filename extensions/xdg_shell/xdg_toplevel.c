@@ -8,7 +8,6 @@
 #include <extensions/xdg_shell/xdg_surface.h>
 #include <core/wl_surface.h>
 #include <backend/screen.h>
-#include <server.h>
 #include <util/log.h>
 #include <util/util.h>
 
@@ -34,17 +33,23 @@ const char *app_id) {
 
 static void show_window_menu(struct wl_client *client, struct wl_resource
 *resource, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y) {
-
+	/*
+	 * No window menu
+	 */
 }
 
 static void move(struct wl_client *client, struct wl_resource *resource, struct
 wl_resource *seat, uint32_t serial) {
-
+	/*
+	 * Windows can't be moved
+	 */
 }
 
 static void resize(struct wl_client *client, struct wl_resource *resource,
 struct wl_resource *seat, uint32_t serial, uint32_t edges) {
-
+	/*
+	 * Windows can't be resized
+	 */
 }
 
 static void set_max_size(struct wl_client *client, struct wl_resource *resource,
@@ -100,11 +105,23 @@ static const struct xdg_toplevel_interface impl = {
 };
 
 static void commit_notify(struct wl_listener *listener, void *data) {
+	struct xdg_toplevel_data *xdg_toplevel;
+	xdg_toplevel = wl_container_of(listener, xdg_toplevel, commit);
+	struct xdg_surface0 *xdg_surface = xdg_toplevel->xdg_surface_data;
 	struct surface *surface = data;
-	if (!surface->is_mapped && surface->current->buffer) {
-		surface->surface_events.map(surface,
-		 surface->surface_events.user_data);
-		surface->is_mapped = true;
+
+	if (!xdg_surface_map_condition_check(xdg_surface,
+	                                     MAP_CONDITION_ROLE_INIT_COMMIT)) {
+		void *user_data = xdg_toplevel->events.user_data;
+		xdg_toplevel->events.init(xdg_toplevel, user_data);
+		xdg_surface_map_condition_satisfied(xdg_surface,
+		                               MAP_CONDITION_ROLE_INIT_COMMIT);
+	}
+
+	if (!xdg_surface_map_condition_check(xdg_surface,
+	 MAP_CONDITION_BUFFER_COMMIT) && surface->current->buffer) {
+		xdg_surface_map_condition_satisfied(xdg_surface,
+		                                  MAP_CONDITION_BUFFER_COMMIT);
 	}
 }
 
@@ -118,7 +135,6 @@ static void destroyed(struct wl_resource *resource) {
 		 surface->surface_events.user_data);
 		surface->is_mapped = false;
 	}*/
-	server_window_destroy(data);
 	errlog("Destroyed the window '%s'", data->app_id); //TODO move to main
 	free(data->app_id);
 	free(data);
@@ -126,36 +142,21 @@ static void destroyed(struct wl_resource *resource) {
 
 // version 1
 
-void xdg_toplevel_new(struct wl_resource *resource, struct xdg_surface0
-*xdg_surface_data, struct server *server) {
+struct xdg_toplevel_data *xdg_toplevel_new(struct wl_resource *resource, struct xdg_surface0
+*xdg_surface_data, struct xdg_toplevel_events events) {
 	struct xdg_toplevel_data *toplevel_data = calloc(1, sizeof(struct
 	xdg_toplevel_data));
-	toplevel_data->server = server;
+	toplevel_data->resource = resource;
 	toplevel_data->xdg_surface_data = xdg_surface_data;
 	struct surface *surface_data =
 	wl_resource_get_user_data(xdg_surface_data->surface);
 	toplevel_data->commit.notify = commit_notify;
 	wl_signal_add(&surface_data->commit, &toplevel_data->commit);
 	toplevel_data->app_id = get_a_name(wl_resource_get_client(resource));
+	toplevel_data->events = events;
 	wl_resource_set_implementation(resource, &impl, toplevel_data,
 	destroyed);
-	server_window_create(toplevel_data);
-	struct wl_array array;
-	wl_array_init(&array);
-	int32_t *state1 = wl_array_add(&array, sizeof(int32_t));
-	*state1 = XDG_TOPLEVEL_STATE_ACTIVATED;
-	int32_t *state2 = wl_array_add(&array, sizeof(int32_t));
-	*state2 = XDG_TOPLEVEL_STATE_MAXIMIZED;
-	struct box box = screen_get_dimensions(server_get_screen(server));
-/*
- * XXX: mpv --gpu-context=wayland segfaults for this, probably their bug:
- *      they try to resize the window before initializing egl_window
- * The following `if` is just a temporary way to avoid this segfault
- */
-	if (strcmp(toplevel_data->app_id, "mpv"))
-	xdg_toplevel_send_configure(resource, box.width, box.height, &array);
-//	xdg_toplevel_send_configure(resource, 500, 500, &array);
-	server_set_focus(toplevel_data); // TODO: temp !!!!
+	return toplevel_data;
 }
 
 char *xdg_toplevel_get_app_id(struct xdg_toplevel_data *data) {

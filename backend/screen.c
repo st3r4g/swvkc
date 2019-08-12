@@ -350,7 +350,7 @@ uint32_t height) {
 	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_h, height); // CRTC_H
 	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_id, S->crtc_id); // CRTC_ID
 
-	if (drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.fb_id, fb_get_id(fb)) < 0)
+	if (drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.fb_id, fb->id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
 
 	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_ATOMIC_TEST_ONLY |
@@ -380,7 +380,7 @@ uint32_t height) {
 void screen_post(struct screen *S, int fence_fd) {
 	drmModeAtomicReq *req = drmModeAtomicAlloc();
 	if (drmModeAtomicAddProperty(req, S->plane_id,
-	S->props_plane_fb_id, fb_get_id(S->fb)) < 0)
+	S->props_plane_fb_id, S->fb->id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
 	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_PAGE_FLIP_EVENT |
 	DRM_MODE_ATOMIC_NONBLOCK, S))
@@ -417,6 +417,9 @@ bool screen_is_overlay_supported(struct screen *S) {
 	return S->overlay_plane_id > 0;
 }
 
+/*
+ * DRM Framebuffer manager: private code
+ */
 struct fb *screen_fb_create(struct screen *screen, struct buffer *buffer) {
 	uint32_t width = buffer_get_width(buffer);
 	uint32_t height = buffer_get_height(buffer);
@@ -433,7 +436,7 @@ struct fb *screen_fb_create(struct screen *screen, struct buffer *buffer) {
 		modifier[i] = buffer_get_modifier(buffer);
 	}
 
-	// hack
+	// XRGB8888 is more likely to be supported
 	format = format == DRM_FORMAT_ARGB8888 ? DRM_FORMAT_XRGB8888 : format;
 
 	uint32_t buf_id;
@@ -449,6 +452,15 @@ struct fb *screen_fb_create(struct screen *screen, struct buffer *buffer) {
 	return fb;
 }
 
+void screen_fb_destroy(struct screen *screen, struct fb *fb) {
+	buffer_destroy(fb->buffer);
+	drmModeRmFB(screen->gpu_fd, fb->id);
+	free(fb);
+}
+
+/*
+ * DRM Framebuffer manager: public code
+ */
 struct fb *screen_fb_create_main(struct screen *screen, int width, int height) {
 	struct buffer *buffer = bufmgr_buffer_create(screen->bufmgr, width, height);
 	if (!buffer)
@@ -462,16 +474,6 @@ int32_t height, uint32_t format, uint32_t num_planes, int32_t *fds, uint32_t
 	struct buffer *buffer = bufmgr_buffer_import_from_dmabuf(screen->bufmgr,
 	 num_planes, fds, width, height, format, strides, offsets, modifiers[0]);
 	return screen_fb_create(screen, buffer);
-}
-
-uint32_t fb_get_id(struct fb *fb) {
-	return fb->id;
-}
-
-void screen_fb_destroy(struct screen *screen, struct fb *fb) {
-	buffer_destroy(fb->buffer);
-	drmModeRmFB(screen->gpu_fd, fb->id);
-	free(fb);
 }
 
 void screen_fb_schedule_destroy(struct screen *screen, struct fb *fb) {

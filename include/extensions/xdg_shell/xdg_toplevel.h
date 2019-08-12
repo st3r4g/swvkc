@@ -1,20 +1,28 @@
-#include <wayland-server-core.h>
-#include <server.h>
+#ifndef MYXDGTOPLEVEL_H
+#define MYXDGTOPLEVEL_H
 
-struct xdg_toplevel_data {
-	struct xdg_surface0 *xdg_surface_data;
-	struct wl_listener commit;
-	struct server *server;
-	char *app_id;
-/*
- * The following violates the concept that each resource user_data should only
- * contain information about that resource, but it's the most convenient way to
- * mantain a list of windows as long as the xdg_shell is the only shell
- */
-	struct wl_list link;
+struct xdg_toplevel_data;
+
+typedef void (*xdg_toplevel_init_t)(struct xdg_toplevel_data *, void *);
+
+struct xdg_toplevel_events {
+	xdg_toplevel_init_t init;
+
+	void *user_data;
 };
 
-void xdg_toplevel_new(struct wl_resource *, struct xdg_surface0 *, struct server
-*);
+struct xdg_toplevel_data {
+	struct wl_resource *resource;
+	struct xdg_surface0 *xdg_surface_data;
+	struct wl_listener commit;
+	char *app_id;
+
+	struct xdg_toplevel_events events;
+};
+
+struct xdg_toplevel_data *xdg_toplevel_new(struct wl_resource *, struct
+xdg_surface0 *, struct xdg_toplevel_events events);
 
 char *xdg_toplevel_get_app_id(struct xdg_toplevel_data *);
+
+#endif

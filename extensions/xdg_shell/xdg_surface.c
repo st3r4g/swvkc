@@ -8,7 +8,6 @@
 #include <core/wl_surface.h>
 #include <core/wl_surface_staged_field.h>
 #include <extensions/xdg_shell/xdg_surface.h>
-#include <extensions/xdg_shell/xdg_toplevel.h>
 #include <util/log.h>
 #include <util/util.h>
 
@@ -22,6 +21,31 @@ void *user_data) {
 	return WL_ITERATOR_CONTINUE;
 }*/
 
+bool xdg_surface_is_mapped(struct xdg_surface0 *xdg_surface) {
+	static const uint8_t all_conditions_set =
+	 MAP_CONDITION_ROLE_ASSIGNED |
+	 MAP_CONDITION_BASE_ROLE_INIT_COMMIT |
+	 MAP_CONDITION_ROLE_INIT_COMMIT |
+	 MAP_CONDITION_BUFFER_COMMIT;
+	return xdg_surface->map_conditions == all_conditions_set;
+}
+
+bool xdg_surface_map_condition_check(struct xdg_surface0 *xdg_surface, enum
+map_condition_field condition) {
+	return xdg_surface->map_conditions & condition;
+}
+
+void xdg_surface_map_condition_satisfied(struct xdg_surface0 *xdg_surface, enum
+map_condition_field condition) {
+	xdg_surface->map_conditions |= condition;
+	if (xdg_surface_is_mapped(xdg_surface)) {
+		struct surface *surface = wl_resource_get_user_data(xdg_surface->surface);
+		void *user_data = surface->surface_events.user_data;
+		surface->surface_events.map(surface, user_data);
+		surface->is_mapped = true;
+	}
+}
+
 static void destroy(struct wl_client *client, struct wl_resource *resource) {
 	wl_resource_destroy(resource);
 }
@@ -31,8 +55,24 @@ uint32_t id) {
 	struct xdg_surface0 *data = wl_resource_get_user_data(resource);
 	struct wl_resource *toplevel_resource = wl_resource_create(client,
 	&xdg_toplevel_interface, 1, id);
-	xdg_toplevel_new(toplevel_resource, data, data->server);
-	xdg_surface_send_configure(resource, 0);
+	struct xdg_toplevel_data *xdg_toplevel =
+	 xdg_toplevel_new(toplevel_resource, data, data->xdg_toplevel_events);
+/*
+ * Assign a role to the surface
+ */
+	struct surface *surface = wl_resource_get_user_data(data->surface);
+	bool role_check = surface->role == ROLE_NONE      ||
+	                  surface->role == ROLE_XDG_TOPLEVEL;
+	bool base_role_check = surface->base_role == BASE_ROLE_XDG_SURFACE;
+	if (!(role_check && base_role_check)) {
+		wl_resource_post_error(data->wm_base, XDG_WM_BASE_ERROR_ROLE,
+		 "Given wl_surface has another role");
+		return;
+	}
+	surface->role = ROLE_XDG_TOPLEVEL;
+	surface->role_object = xdg_toplevel;
+	xdg_surface_map_condition_satisfied(data,
+	 MAP_CONDITION_ROLE_ASSIGNED);
 }
 
 static void get_popup(struct wl_client *client, struct wl_resource *resource,
@@ -81,6 +121,12 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 	current->window_geometry.width = pending->window_geometry.width;
 	current->window_geometry.height = pending->window_geometry.height;
 	
+	if (!xdg_surface_map_condition_check(xdg_surface,
+	                                MAP_CONDITION_BASE_ROLE_INIT_COMMIT)) {
+		xdg_surface_map_condition_satisfied(xdg_surface,
+		                          MAP_CONDITION_BASE_ROLE_INIT_COMMIT);
+	}
+
 	struct surface *surface = data;
 	if (surface->staged & BUFFER)
 		xdg_surface->contents_update_callback(xdg_surface, xdg_surface->user_data);
@@ -96,12 +142,15 @@ static void xdg_surface_free(struct wl_resource *resource) {
 }
 
 struct xdg_surface0 *xdg_surface_new(struct wl_resource *resource, struct
-wl_resource *surface_resource, struct server *server, xdg_surface_contents_update_t contents_update,
-void *user_data, callback_t child_destroy_notify, void *data) {
+wl_resource *surface_resource, struct wl_resource *wm_base, struct server
+*server, xdg_surface_contents_update_t contents_update, void *user_data,
+struct xdg_toplevel_events xdg_toplevel_events, callback_t child_destroy_notify,
+void *data) {
 	struct surface *surface = wl_resource_get_user_data(surface_resource);
 	struct xdg_surface0 *xdg_surface = calloc(1, sizeof(struct
 	xdg_surface0));
 	xdg_surface->self = resource;
+	xdg_surface->wm_base = wm_base;
 	xdg_surface->server = server;
 	xdg_surface->pending = calloc(1, sizeof(struct xdg_surface_state0));
 	xdg_surface->current = calloc(1, sizeof(struct xdg_surface_state0));
@@ -109,6 +158,8 @@ void *user_data, callback_t child_destroy_notify, void *data) {
 
 	xdg_surface->contents_update_callback = contents_update;
 	xdg_surface->user_data = user_data;
+
+	xdg_surface->xdg_toplevel_events = xdg_toplevel_events;
 
 	xdg_surface->child_destroy_notify = child_destroy_notify;
 	xdg_surface->data = data;
