@@ -31,7 +31,7 @@ struct keyboard *keyboard_new(struct wl_resource *resource, struct input *input)
 		WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1, input_get_keymap_fd(input),
 		input_get_keymap_size(input));
 	if (wl_resource_get_version(resource) >= WL_KEYBOARD_REPEAT_INFO_SINCE_VERSION)
-		wl_keyboard_send_repeat_info(resource, 25, 600);
+		wl_keyboard_send_repeat_info(resource, 30, 300);
 
 	return keyboard;
 }

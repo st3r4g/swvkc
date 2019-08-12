@@ -189,13 +189,13 @@ _Bool input_handle_event(struct input *S, struct aaa *aaa) {
 	read(S->key_fd, &ev, sizeof(struct input_event));
 
 	if (ev.type == EV_KEY) {
+		if (ev.value == 2)
+			return 0;
 		aaa->key = ev.code;
 		aaa->state = ev.value > 0 ? 1 : 0;
 		xkb_keycode_t keycode = aaa->key + 8;
 		xkb_state_key_get_utf8(S->state, keycode, aaa->name, 2);
 		enum xkb_key_direction direction = aaa->state ? XKB_KEY_DOWN : XKB_KEY_UP;
-		if (ev.value == 2 && !xkb_keymap_key_repeats(S->keymap, keycode))
-			return 0;
 
 		xkb_state_update_key(S->state, keycode, direction);
 
