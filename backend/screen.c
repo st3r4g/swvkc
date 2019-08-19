@@ -3,6 +3,7 @@
 
 #include <wayland-util.h> // just for wl_list
 
+#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,9 +83,6 @@ struct screen {
 	void (*vblank_notify)(int,unsigned int,unsigned int, unsigned int,
 	void*, bool);
 	void *user_data;
-	// out_fence callback
-	void (*listen_to_out_fence)(int, void*);
-	void *user_data2;
 
 	bool vblank_has_page_flip;
 };
@@ -94,14 +92,11 @@ struct fb *screen_fb_create_main(struct screen *screen, int width, int height);
 void screen_fb_destroy(struct screen *screen, struct fb *fb);
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
-unsigned int, void*, bool), void *user_data, void (*listen_to_out_fence)(int,
-void*), void *user_data2, bool dmabuf_mod) {
+unsigned int, void*, bool), void *user_data, bool dmabuf_mod) {
 	struct screen *screen = calloc(1, sizeof(struct screen));
 	wl_list_init(&screen->fb_destroy_list);
 	screen->vblank_notify = vblank_notify;
 	screen->user_data = user_data;
-	screen->listen_to_out_fence = listen_to_out_fence;
-	screen->user_data2 = user_data2;
 	drm_setup(screen);
 	screen->bufmgr = bufmgr_create(screen->gpu_fd);
 	struct box screen_size = screen_get_dimensions(screen);
@@ -333,64 +328,64 @@ void drm_handle_event(int fd) {
 	my_drmHandleEvent(fd, &ev_context);
 }
 
-void client_buffer_on_overlay(struct screen *S, struct fb *fb, uint32_t width,
-uint32_t height) {
-
-	drmModeAtomicReq *req = drmModeAtomicAlloc();
-	if (!req)
-		fprintf(stderr, "atomic allocation failed\n");
-
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_x, 0 << 16); // SRC_X
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_y, 0 << 16); // SRC_Y
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_w, width << 16); // SRC_W
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.src_h, height << 16); // SRC_H
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_x, 0); // CRTC_X
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_y, 0); // CRTC_Y
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_w, width); // CRTC_W
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_h, height); // CRTC_H
-	drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.crtc_id, S->crtc_id); // CRTC_ID
-
-	if (drmModeAtomicAddProperty(req, S->overlay_plane_id, S->props.plane.fb_id, fb->id) < 0)
-		fprintf(stderr, "atomic add property failed\n");
-
-	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_ATOMIC_TEST_ONLY |
+void screen_atomic_test(struct screen *S) {
+	if (drmModeAtomicCommit(S->gpu_fd, S->req, DRM_MODE_ATOMIC_TEST_ONLY |
 	DRM_MODE_ATOMIC_ALLOW_MODESET, 0))
 	perror("test failed");
 	else {
 //	fprintf(stderr, "test success\n");
 	}
-
-	int out_fence = -1;
-	drmModeAtomicAddProperty(req, S->crtc_id, S->props.crtc.out_fence_ptr, (uint64_t)&out_fence);
-
-	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_PAGE_FLIP_EVENT |
-	DRM_MODE_ATOMIC_NONBLOCK, S)) {
-		perror("atomic commit failed");
-		errlog("out_fence: %d", out_fence);
-		close(out_fence);
-	}
-	else {
-//		fprintf(stderr, "atomic commit success\n");
-//		errlog("out_fence: %d", out_fence);
-		S->listen_to_out_fence(out_fence, S->user_data2);
-	}
-	drmModeAtomicFree(req);
 }
 
-void screen_post(struct screen *S, int fence_fd) {
-	drmModeAtomicReq *req = drmModeAtomicAlloc();
-	if (drmModeAtomicAddProperty(req, S->plane_id,
+int screen_atomic_commit(struct screen *self) {
+	int out_fence_fd = -1;
+
+	assert(self->req);
+
+	drmModeAtomicAddProperty(self->req, self->crtc_id,
+	self->props.crtc.out_fence_ptr, (uint64_t)&out_fence_fd);
+
+	if (drmModeAtomicCommit(self->gpu_fd, self->req,
+	DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, self))
+		perror("drmModeAtomicCommit");
+
+	drmModeAtomicFree(self->req);
+	self->req = NULL;
+	return out_fence_fd;
+}
+
+void client_buffer_on_overlay(struct screen *S, struct fb *fb, uint32_t width,
+uint32_t height) {
+	assert(!S->req);
+
+	S->req = drmModeAtomicAlloc();
+	if (!S->req)
+		fprintf(stderr, "atomic allocation failed\n");
+
+	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.src_x, 0 << 16); // SRC_X
+	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.src_y, 0 << 16); // SRC_Y
+	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.src_w, width << 16); // SRC_W
+	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.src_h, height << 16); // SRC_H
+	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.crtc_x, 0); // CRTC_X
+	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.crtc_y, 0); // CRTC_Y
+	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.crtc_w, width); // CRTC_W
+	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.crtc_h, height); // CRTC_H
+	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.crtc_id, S->crtc_id); // CRTC_ID
+
+	if (drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.fb_id, fb->id) < 0)
+		fprintf(stderr, "atomic add property failed\n");
+}
+
+void screen_main(struct screen *S) {
+	assert(!S->req);
+
+	S->req = drmModeAtomicAlloc();
+	if (!S->req)
+		fprintf(stderr, "atomic allocation failed\n");
+
+	if (drmModeAtomicAddProperty(S->req, S->plane_id,
 	S->props_plane_fb_id, S->fb->id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
-	if (drmModeAtomicCommit(S->gpu_fd, req, DRM_MODE_PAGE_FLIP_EVENT |
-	DRM_MODE_ATOMIC_NONBLOCK, S))
-	perror("atomic commit failed");
-	else {
-//	fprintf(stderr, "atomic commit success\n");
-//	if (fb_id)
-//	drmModeRmFB(S->gpu_fd, fb_id);
-	}
-	drmModeAtomicFree(req);
 }
 
 int screen_get_gpu_fd(struct screen *S) {

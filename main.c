@@ -63,6 +63,8 @@ struct surface_node {
 	struct wl_list link;
 };
 
+static int out_fence_handler(int fd, uint32_t mask, void *data);
+
 struct surface *focused_surface(struct server *server) {
 	struct surface_node *node;
 	node = wl_container_of(server->mapped_surfaces_list.next, node, link);
@@ -101,7 +103,8 @@ void shmbuf(struct wl_resource *buffer) {
 	vulkan_render_shm_buffer(width, height, stride, format, data);
 	wl_shm_buffer_end_access(shm_buffer);
 
-//	wl_buffer_send_release(buffer); // XXX 1
+//	wl_buffer_send_release(buffer); // XXX: in the shmbuf case should be
+//	called here
 }
 
 /*
@@ -155,16 +158,22 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 		struct screen *screen = server->screen;
 		if (wl_buffer_is_dmabuf(buffer))
 			dmabuf(buffer, screen);
-		else
+		else {
 			shmbuf(buffer);
-		if (!screen_is_overlay_supported(screen) || !wl_buffer_is_dmabuf(buffer))
-			screen_post(screen, 0);
-//			NEEDED, screen refresh (scanout) happens automatically
-//			from the currently bound buffer only in one GPU
-/*
- * Should be true only if the commit succeded
- */
-		pending_page_flip = true; //XXX 2
+			screen_main(screen);
+		}
+
+		int out_fence_fd = screen_atomic_commit(screen);
+		if (out_fence_fd < 0)
+			return;
+
+		struct wl_event_loop *el =
+		 wl_display_get_event_loop(server->display);
+		server->event = wl_event_loop_add_fd(el, out_fence_fd,
+		 WL_EVENT_READABLE, out_fence_handler, server);
+		if (!server->event) // was NULL once (kitty)
+			errlog("wl_event_loop_add_fd failed (fd %d)", out_fence_fd);
+		pending_page_flip = true;
 	}
 }
 
@@ -344,15 +353,6 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 	return 0;
 }
 
-void listen_to_out_fence(int fd, void *user_data) {
-	struct server *server = user_data;
-	struct wl_event_loop *el = wl_display_get_event_loop(server->display);
-	server->event = wl_event_loop_add_fd(el, fd, WL_EVENT_READABLE,
-	 out_fence_handler, server);
-	if (!server->event) // was NULL once (kitty)
-		errlog("wl_event_loop_add_fd failed (fd %d)", fd);
-}
-
 static int gpu_ev_handler(int fd, uint32_t mask, void *data) {
 	drm_handle_event(fd);
 
@@ -519,8 +519,7 @@ int main(int argc, char *argv[]) {
 	errlog("swvkc DMABUF support: %s", words[dmabuf]);
 	errlog("swvkc DMABUF with MODIFIERS support: %s", words[dmabuf_mod]);
 
-	server->screen = screen_setup(vblank_notify, server, listen_to_out_fence,
-	server, dmabuf_mod);
+	server->screen = screen_setup(vblank_notify, server, dmabuf_mod);
 	if (!server->screen)
 		return EXIT_FAILURE;
 

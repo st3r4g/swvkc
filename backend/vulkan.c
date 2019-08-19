@@ -35,6 +35,7 @@ static int compare_ext_names(const void *a_, const void *b_) {
 }
 
 static int is_ext_name(const void *a_, const void *b_) {
+	// swap the arguments?
 	const VkExtensionProperties *a = a_;
 	const char *b = b_;
 	return strcmp(a->extensionName, b);
