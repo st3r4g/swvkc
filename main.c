@@ -331,12 +331,14 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 			wl_buffer_send_release(surface->current->previous_buffer);
 	}*/
 
-	struct bufres_node *bufres_node, *tmp;
-	wl_list_for_each_safe(bufres_node, tmp, &server->bufres_list, link) {
-		wl_buffer_send_release(bufres_node->bufres);
-		wl_list_remove(&bufres_node->link);
-		free(bufres_node);
+	if (wl_list_length(&server->bufres_list) > 1) {
+		struct bufres_node *node;
+		node = wl_container_of(server->bufres_list.prev, node, link);
+		wl_buffer_send_release(node->bufres);
+		wl_list_remove(&node->link);
+		free(node);
 	}
+
 	return 0;
 }
 
