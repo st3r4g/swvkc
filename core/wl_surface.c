@@ -20,7 +20,6 @@ static void attach(struct wl_client *client, struct wl_resource
 		errlog("surface.attach called with nonzero x=%d y=%d", x, y);
 	struct surface *surface = wl_resource_get_user_data(resource);
 	surface->pending->buffer = buffer;
-	surface->pending->previous_buffer = surface->current->buffer;
 	surface->staged |= BUFFER;
 }
 
@@ -62,10 +61,8 @@ static void commit(struct wl_client *client, struct wl_resource
 	struct dbuf_state *pending = surface->pending;
 
 // "On commit, a pending wl_buffer is applied first, and all other state second"
-	if (surface->staged & BUFFER) {
+	if (surface->staged & BUFFER)
 		current->buffer = pending->buffer;
-		current->previous_buffer = pending->previous_buffer;
-	}
 
 	if (surface->staged & DAMAGE)
 		current->damage = pending->damage;

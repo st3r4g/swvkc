@@ -126,10 +126,6 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 		xdg_surface_map_condition_satisfied(xdg_surface,
 		                          MAP_CONDITION_BASE_ROLE_INIT_COMMIT);
 	}
-
-	struct surface *surface = data;
-	if (surface->staged & BUFFER)
-		xdg_surface->contents_update_callback(xdg_surface, xdg_surface->user_data);
 }
 
 static void xdg_surface_free(struct wl_resource *resource) {
@@ -142,22 +138,17 @@ static void xdg_surface_free(struct wl_resource *resource) {
 }
 
 struct xdg_surface0 *xdg_surface_new(struct wl_resource *resource, struct
-wl_resource *surface_resource, struct wl_resource *wm_base, struct server
-*server, xdg_surface_contents_update_t contents_update, void *user_data,
-struct xdg_toplevel_events xdg_toplevel_events, callback_t child_destroy_notify,
-void *data) {
+wl_resource *surface_resource, struct wl_resource *wm_base, struct
+xdg_toplevel_events xdg_toplevel_events, callback_t child_destroy_notify, void
+*data) {
 	struct surface *surface = wl_resource_get_user_data(surface_resource);
 	struct xdg_surface0 *xdg_surface = calloc(1, sizeof(struct
 	xdg_surface0));
 	xdg_surface->self = resource;
 	xdg_surface->wm_base = wm_base;
-	xdg_surface->server = server;
 	xdg_surface->pending = calloc(1, sizeof(struct xdg_surface_state0));
 	xdg_surface->current = calloc(1, sizeof(struct xdg_surface_state0));
 	xdg_surface->surface = surface_resource;
-
-	xdg_surface->contents_update_callback = contents_update;
-	xdg_surface->user_data = user_data;
 
 	xdg_surface->xdg_toplevel_events = xdg_toplevel_events;
 

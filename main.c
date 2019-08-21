@@ -38,8 +38,6 @@
 
 #include <linux/input-event-codes.h>
 
-bool pending_page_flip = false;
-
 struct server {
 	struct wl_display *display;
 
@@ -54,12 +52,18 @@ struct server {
  * Temporary way to manage surfaces, it should evolve into a tree
  */
 	struct wl_list mapped_surfaces_list;
+	struct wl_list bufres_list; // Buffers that have been scanout
 
 	struct wl_event_source *event;
 };
 
 struct surface_node {
 	struct surface *surface;
+	struct wl_list link;
+};
+
+struct bufres_node {
+	struct wl_resource *bufres;
 	struct wl_list link;
 };
 
@@ -102,9 +106,7 @@ void shmbuf(struct wl_resource *buffer) {
 	wl_shm_buffer_begin_access(shm_buffer);
 	vulkan_render_shm_buffer(width, height, stride, format, data);
 	wl_shm_buffer_end_access(shm_buffer);
-
-//	wl_buffer_send_release(buffer); // XXX: in the shmbuf case should be
-//	called here
+	wl_buffer_send_release(buffer);
 }
 
 /*
@@ -148,16 +150,20 @@ void surface_unmap_notify(struct surface *surface, void *user_data) {
 void surface_contents_update_notify(struct surface *surface, void *user_data) {
 	struct server *server = user_data;
 /*
- * At this point `pending_page_flip` should always be false (unless the client
- * commits more than one buffer update per signaled frame on purpose)
+ * At this point `page_flip_is_pending()` should always be false (unless the
+ * client commits more than one buffer update per signaled frame on purpose)
  */
-	if (pending_page_flip)
+	if (screen_page_flip_is_pending(server->screen))
 		errlog("ERROR: buffer already committed");
-	if (!pending_page_flip && surface->current->buffer && surface == focused_surface(server)) {
+	else if (surface->current->buffer && surface == focused_surface(server)) {
 		struct wl_resource *buffer = surface->current->buffer;
 		struct screen *screen = server->screen;
-		if (wl_buffer_is_dmabuf(buffer))
+		if (wl_buffer_is_dmabuf(buffer)) {
 			dmabuf(buffer, screen);
+			struct bufres_node *node = malloc(sizeof(*node));
+			node->bufres = buffer;
+			wl_list_insert(&server->bufres_list, &node->link);
+		}
 		else {
 			shmbuf(buffer);
 			screen_main(screen);
@@ -173,35 +179,6 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 		 WL_EVENT_READABLE, out_fence_handler, server);
 		if (!server->event) // was NULL once (kitty)
 			errlog("wl_event_loop_add_fd failed (fd %d)", out_fence_fd);
-		pending_page_flip = true;
-	}
-}
-
-void xdg_surface_contents_update_notify(struct xdg_surface0 *xdg_surface, void *user_data) {
-	return;
-	errlog("xdg_surface_contents_update_notify");
-	struct server *server = user_data;
-	struct surface *surface = wl_resource_get_user_data(xdg_surface->surface);
-
-/*
- * At this point `pending_page_flip` should always be false (unless the client
- * commits more than one buffer update per signaled frame on purpose)
- */
-	if (pending_page_flip)
-		errlog("ERROR: buffer already committed");
-	if (!pending_page_flip && surface->current->buffer && surface == focused_surface(server)) {
-//		errlog("buffer committed");
-		struct wl_resource *buffer = surface->current->buffer;
-		struct screen *screen = server->screen;
-		if (wl_buffer_is_dmabuf(buffer))
-			dmabuf(buffer, screen);
-		else
-			shmbuf(buffer);
-		if (!screen_is_overlay_supported(screen) || !wl_buffer_is_dmabuf(buffer))
-			screen_post(screen, 0);
-//			NEEDED, screen refresh (scanout) happens automatically
-//			from the currently bound buffer only in one GPU
-		pending_page_flip = true;
 	}
 }
 
@@ -238,6 +215,14 @@ void buffer_dmabuf_destroy_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 	screen_fb_schedule_destroy(server->screen, fb);
 /*	void *image = dmabuf->subsystem_object[SUBSYSTEM_VULKAN];
 	renderer_image_destroy(server->renderer, image); */
+
+	struct bufres_node *node;
+	wl_list_for_each(node, &server->bufres_list, link)
+		if (wl_resource_get_user_data(node->bufres) == dmabuf) {
+		wl_list_remove(&node->link);
+		free(node);
+		break;
+	}
 }
 
 struct surface_node *match_app_id(struct server *server, char *name) {
@@ -309,10 +294,6 @@ void server_change_focus(struct server *self, struct surface_node *node) {
 	wl_keyboard_send_enter(x2->keyboard, 0, x2->surface, &array);
 }
 
-struct screen *server_get_screen(struct server *server) {
-	return server->screen;
-}
-
 static void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 	struct server *server = user_data;
@@ -323,6 +304,7 @@ tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
  * to tell the client to render a new frame. This is the worst case scenario for
  * input lag (= a little more than the inverse of the refresh rate)
  */
+	bool pending_page_flip = screen_page_flip_is_pending(server->screen);
 	bool skip_frame = pending_page_flip && !vblank_has_page_flip;
 
 	if (!wl_list_empty(&server->mapped_surfaces_list) && !skip_frame) {
@@ -343,13 +325,18 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 		wl_event_source_remove(server->event); // sometimes fails with mpv (?)
 	close(fd);
 
-	if (!wl_list_empty(&server->mapped_surfaces_list)) {
+/*	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct surface *surface = focused_surface(server);
 		if (surface->current->previous_buffer)
 			wl_buffer_send_release(surface->current->previous_buffer);
-	}
+	}*/
 
-	pending_page_flip = false;
+	struct bufres_node *bufres_node, *tmp;
+	wl_list_for_each_safe(bufres_node, tmp, &server->bufres_list, link) {
+		wl_buffer_send_release(bufres_node->bufres);
+		wl_list_remove(&bufres_node->link);
+		free(bufres_node);
+	}
 	return 0;
 }
 
@@ -451,15 +438,11 @@ version, uint32_t id) {
 	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&xdg_wm_base_interface, version, id);
-	struct xdg_shell_events xdg_shell_events = {
-		.xdg_surface_contents_update = xdg_surface_contents_update_notify,
-		.user_data = server
-	};
 	struct xdg_toplevel_events xdg_toplevel_events = {
 		.init = xdg_toplevel_init_notify,
 		.user_data = server
 	};
-	xdg_wm_base_new(resource, server, xdg_shell_events, xdg_toplevel_events);
+	xdg_wm_base_new(resource, server, xdg_toplevel_events);
 }
 
 /*static void xdg_shell_v6_bind(struct wl_client *client, void *data, uint32_t
@@ -509,6 +492,7 @@ int main(int argc, char *argv[]) {
 	wl_list_init(&server->seat_list);
 	wl_list_init(&server->xdg_surface_list);
 	wl_list_init(&server->mapped_surfaces_list);
+	wl_list_init(&server->bufres_list);
 //	wl_list_init(&server->xdg_shell_v6_list);
 
 //	wl_list_init(&window_list);

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <unistd.h>
 
 static enum wl_iterator_result find_keyboard(struct wl_resource *resource,
@@ -85,4 +86,15 @@ void dmabuf_save_to_disk(int fd) {
 	for (int i=0; i<256; i++)
 		errlog("%d", buffer[i]);
 	free(buffer);*/
+}
+
+static struct timespec t0 = {0};
+
+int a() {
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+	int s = t.tv_sec - t0.tv_sec;
+	int ns = t.tv_nsec - t0.tv_nsec;
+	t0 = t;
+	return s * 1000 + ns / 1000000;
 }

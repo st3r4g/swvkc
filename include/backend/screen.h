@@ -29,6 +29,7 @@ void screen_post_direct(struct screen *, uint32_t width, uint32_t height,
 uint32_t format, int fd, int stride, int offset, uint64_t modifier);
 void screen_post(struct screen *S, int fence_fd);
 int screen_atomic_commit(struct screen *self);
+bool screen_page_flip_is_pending(struct screen *self);
 void screen_main(struct screen *S);
 
 /*

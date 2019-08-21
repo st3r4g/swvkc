@@ -6,9 +6,6 @@
 #include <wayland-server-core.h>
 #include <util/box.h>
 
-struct xdg_surface0;
-typedef void (*xdg_surface_contents_update_t)(struct xdg_surface0 *, void *);
-
 typedef void (*callback_t)(void *);
 
 enum map_condition_field {
@@ -35,9 +32,6 @@ struct xdg_surface0 {
 
 	struct wl_signal contents_update;
 
-	xdg_surface_contents_update_t contents_update_callback;
-	void *user_data;
-
 	struct xdg_toplevel_events xdg_toplevel_events;
 
 	callback_t child_destroy_notify;
@@ -49,9 +43,6 @@ struct xdg_surface0 *xdg_surface_new
 	struct wl_resource *resource,
 	struct wl_resource *surface_resource,
 	struct wl_resource *wm_base,
-	struct server *server,
-	xdg_surface_contents_update_t xdg_surface_contents_update,
-	void *user_data,
 	struct xdg_toplevel_events xdg_toplevel_events,
 	callback_t child_destroy_notify,
 	void *data

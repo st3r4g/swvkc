@@ -85,6 +85,7 @@ struct screen {
 	void *user_data;
 
 	bool vblank_has_page_flip;
+	bool pending_page_flip;
 };
 
 int drm_setup(struct screen *);
@@ -313,6 +314,7 @@ tv_sec, unsigned int tv_usec, void *user_data) {
 		}
 	}
 
+	screen->pending_page_flip = false;
 	screen->vblank_has_page_flip = true;
 }
 
@@ -351,7 +353,15 @@ int screen_atomic_commit(struct screen *self) {
 
 	drmModeAtomicFree(self->req);
 	self->req = NULL;
+
+	if (out_fence_fd >= 0)
+		self->pending_page_flip = true;
+
 	return out_fence_fd;
+}
+
+bool screen_page_flip_is_pending(struct screen *self) {
+	return self->pending_page_flip;
 }
 
 void client_buffer_on_overlay(struct screen *S, struct fb *fb, uint32_t width,

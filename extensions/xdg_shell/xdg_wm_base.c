@@ -33,10 +33,7 @@ static void get_xdg_surface(struct wl_client *client, struct wl_resource
 	struct wl_resource *xdg_surf_resource = wl_resource_create(client,
 	&xdg_surface_interface, 1, id);
 	struct xdg_surface0 *xdg_surface = xdg_surface_new(xdg_surf_resource,
-	surface_resource, resource, xdg_wm_base->server,
-	xdg_wm_base->xdg_shell_events.xdg_surface_contents_update,
-	xdg_wm_base->xdg_shell_events.user_data,
-	xdg_wm_base->xdg_toplevel_events,
+	surface_resource, resource, xdg_wm_base->xdg_toplevel_events,
 	child_destroy_notify, &xdg_wm_base->xdg_surface_count);
 /*
  * Assign a role to the surface
@@ -72,11 +69,9 @@ static const struct xdg_wm_base_interface impl = {
 };
 
 struct xdg_wm_base *xdg_wm_base_new(struct wl_resource *resource, struct server
-*server, struct xdg_shell_events xdg_shell_events, struct xdg_toplevel_events
-xdg_toplevel_events) {
+*server, struct xdg_toplevel_events xdg_toplevel_events) {
 	struct xdg_wm_base *xdg_wm_base = calloc(1, sizeof(struct xdg_wm_base));
 	xdg_wm_base->server = server;
-	xdg_wm_base->xdg_shell_events = xdg_shell_events;
 	xdg_wm_base->xdg_toplevel_events = xdg_toplevel_events;
 	wl_resource_set_implementation(resource, &impl, xdg_wm_base, 0);
 	return xdg_wm_base;
