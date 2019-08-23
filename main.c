@@ -550,12 +550,13 @@ int main(int argc, char *argv[]) {
 	WL_EVENT_READABLE, key_ev_handler, server);
 
 	if (argc > 1) {
-		int len = argc-1; // amount of spaces + terminating NULL byte
+		int len = argc+4; // amount of spaces + terminating NULL byte + 'exec '
 		for (int i=1; i<argc; i++) {
 			len += strlen(argv[i]);
 		}
 		char *client_cmd = malloc(len*sizeof(char*));
-		for (int i=1, offset=0; i<argc; i++) {
+		strcpy(client_cmd, "exec ");
+		for (int i=1, offset=5; i<argc; i++) {
 			strcpy(client_cmd+offset, argv[i]);
 			if (i < argc-1) {
 				offset = strlen(client_cmd)+1;
