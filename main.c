@@ -153,10 +153,13 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
  * At this point `page_flip_is_pending()` should always be false (unless the
  * client commits more than one buffer update per signaled frame on purpose)
  */
-	if (screen_page_flip_is_pending(server->screen))
+	struct wl_resource *buffer = surface->current->buffer;
+
+	if (screen_page_flip_is_pending(server->screen)) {
 		errlog("ERROR: buffer already committed");
-	else if (surface->current->buffer && surface == focused_surface(server)) {
-		struct wl_resource *buffer = surface->current->buffer;
+		if (buffer)
+			wl_buffer_send_release(buffer);
+	} else if (buffer && surface == focused_surface(server)) {
 		struct screen *screen = server->screen;
 		if (wl_buffer_is_dmabuf(buffer)) {
 			dmabuf(buffer, screen);
