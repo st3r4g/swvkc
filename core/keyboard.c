@@ -2,7 +2,6 @@
 #include <backend/input.h>
 #include <util/log.h>
 #include <core/keyboard.h>
-#include <extensions/xdg_shell.h>
 
 #include <stdlib.h>
 #include <wayland-server-protocol.h>

@@ -9,7 +9,6 @@
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
 #include <xdg-shell-server-protocol.h>
-//#include <xdg-shell-unstable-v6-server-protocol.h>
 #include <linux-dmabuf-unstable-v1-server-protocol.h>
 #include <fullscreen-shell-unstable-v1-server-protocol.h>
 
@@ -24,7 +23,7 @@
 #include <core/seat.h>
 #include <core/keyboard.h>
 #include <core/wl_subcompositor.h>
-#include <core/wl_surface.h> // da togliere
+#include <core/wl_surface.h>
 #include <extensions/xdg_shell/xdg_wm_base.h>
 #include <extensions/xdg_shell/xdg_surface.h>
 #include <extensions/xdg_shell/xdg_toplevel.h>
@@ -44,7 +43,6 @@ struct server {
 	struct input *input;
 	struct screen *screen;
 
-//	struct wl_list xdg_shell_v6_list;
 	struct wl_list seat_list;
 
 	struct wl_list xdg_surface_list;
@@ -457,15 +455,6 @@ version, uint32_t id) {
 	xdg_wm_base_new(resource, server, xdg_toplevel_events);
 }
 
-/*static void xdg_shell_v6_bind(struct wl_client *client, void *data, uint32_t
-version, uint32_t id) {
-	struct server *server = data;
-	struct wl_resource *resource = wl_resource_create(client,
-	&zxdg_shell_v6_interface, version, id);
-	struct xdg_shell *xdg_shell = xdg_shell_new(resource, server);
-	wl_list_insert(&server->xdg_shell_v6_list, &xdg_shell->link);
-}*/
-
 static void zwp_linux_dmabuf_v1_bind(struct wl_client *client, void *data, uint32_t
 version, uint32_t id) {
 	struct server *server = data;
@@ -505,7 +494,6 @@ int main(int argc, char *argv[]) {
 	wl_list_init(&server->xdg_surface_list);
 	wl_list_init(&server->mapped_surfaces_list);
 	wl_list_init(&server->bufres_list);
-//	wl_list_init(&server->xdg_shell_v6_list);
 
 //	wl_list_init(&window_list);
 
@@ -536,8 +524,6 @@ int main(int argc, char *argv[]) {
 	wl_display_init_shm(D);
 	wl_global_create(D, &xdg_wm_base_interface, 1, server,
 	xdg_wm_base_bind);
-/*	wl_global_create(D, &zxdg_shell_v6_interface, 1, server,
-	xdg_shell_v6_bind);*/
 	if (dmabuf)
 		wl_global_create(D, &zwp_linux_dmabuf_v1_interface, 3, server,
 		 zwp_linux_dmabuf_v1_bind);
