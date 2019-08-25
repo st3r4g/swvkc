@@ -107,8 +107,11 @@ void surface_map_notify(struct surface *surface, void *user_data) {
 	struct server *server = user_data;
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct surface *old = focused_surface(server);
-		struct xdg_surface0 *x = old->base_role_object;
-		wl_keyboard_send_leave(x->keyboard, 0, x->surface);
+		if (old->base_role == BASE_ROLE_XDG_SURFACE) {
+			struct xdg_surface0 *x = old->base_role_object;
+			// TODO: protect
+			wl_keyboard_send_leave(x->keyboard, 0, x->surface);
+		}
 	}
 	errlog("A surface has been mapped");
 	struct surface_node *node = malloc(sizeof(struct surface_node));
@@ -132,15 +135,17 @@ void surface_unmap_notify(struct surface *surface, void *user_data) {
 		struct wl_array array;
 		wl_array_init(&array); //Need the currently pressed keys
 		struct surface *new = focused_surface(server);
-		struct xdg_surface0 *x = new->base_role_object;
-		wl_keyboard_send_enter(x->keyboard, 0, x->surface, &array);
+		if (new->base_role == BASE_ROLE_XDG_SURFACE) {
+			struct xdg_surface0 *x = new->base_role_object;
+			// TODO: protect
+			wl_keyboard_send_enter(x->keyboard, 0, x->surface, &array);
+		}
 	}
 }
 
 void surface_contents_update_notify(struct surface *surface, void *user_data) {
 	struct server *server = user_data;
 	struct wl_resource *buffer = surface->current->buffer;
-
 	/*
 	 * If the buffer has been detached, do nothing
 	 */
@@ -240,14 +245,20 @@ struct surface_node *match_app_id(struct server *server, char *name) {
 
 void server_change_focus(struct server *self, struct surface_node *node) {
 	struct surface *focused = focused_surface(self);
-	struct xdg_surface0 *x = focused->base_role_object;
-	wl_keyboard_send_leave(x->keyboard, 0, x->surface);
+	if (focused->base_role == BASE_ROLE_XDG_SURFACE) {
+		struct xdg_surface0 *x = focused->base_role_object;
+		if (x->keyboard)
+			wl_keyboard_send_leave(x->keyboard, 0, x->surface);
+	}
 	wl_list_remove(&node->link);
 	wl_list_insert(&self->mapped_surfaces_list, &node->link);
 	struct wl_array array;
 	wl_array_init(&array); //Need the currently pressed keys
-	struct xdg_surface0 *x2 = node->surface->base_role_object;
-	wl_keyboard_send_enter(x2->keyboard, 0, x2->surface, &array);
+	if (node->surface->base_role == BASE_ROLE_XDG_SURFACE) {
+		struct xdg_surface0 *x2 = node->surface->base_role_object;
+		if (x2->keyboard)
+			wl_keyboard_send_enter(x2->keyboard, 0, x2->surface, &array);
+	}
 }
 
 static void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int

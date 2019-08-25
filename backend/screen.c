@@ -299,15 +299,18 @@ unsigned int tv_usec, void *user_data) {
 	screen->vblank_has_page_flip = false;
 }
 
-uint32_t active_fb(int fd, uint32_t plane_id);
+uint32_t get_active_fb(int fd, uint32_t plane_id);
 
 static void page_flip_handler(int fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data) {
 	struct screen *screen = user_data;
+	uint32_t active_fb_primary = get_active_fb(screen->gpu_fd, screen->plane_id);
+	uint32_t active_fb_overlay = get_active_fb(screen->gpu_fd, screen->overlay_plane_id);
 
 	struct fb_node *fb_node, *tmp;
 	wl_list_for_each_safe(fb_node, tmp, &screen->fb_destroy_list, link) {
-		if (fb_node->fb->id != active_fb(screen->gpu_fd, screen->overlay_plane_id)) {
+		if (fb_node->fb->id != active_fb_primary &&
+		    fb_node->fb->id != active_fb_overlay) {
 			screen_fb_destroy(screen, fb_node->fb);
 			wl_list_remove(&fb_node->link);
 			free(fb_node);
@@ -502,10 +505,22 @@ void screen_release(struct screen *S) {
 	drmModeAtomicReq *req = drmModeAtomicAlloc();
 	if (drmModeAtomicAddProperty(req, S->plane_id, S->props_plane_fb_id, S->old_fb_id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
+	// TODO: unbind overlay planes
 	if(drmModeAtomicCommit(S->gpu_fd, req, 0, 0))
 		perror("atomic commit failed");
 	
 	drmModeAtomicFree(req);
+
+	/*
+	 * Client buffers clean-up
+	 */
+	struct fb_node *fb_node, *tmp;
+	wl_list_for_each_safe(fb_node, tmp, &S->fb_destroy_list, link) {
+		screen_fb_destroy(S, fb_node->fb);
+		wl_list_remove(&fb_node->link);
+		free(fb_node);
+	}
+
 	screen_fb_destroy(S, S->fb);
 	bufmgr_destroy(S->bufmgr);
 	close(S->gpu_fd);
@@ -606,7 +621,7 @@ struct props find_prop_ids(int fd, uint32_t plane_id, uint32_t conn_id, uint32_t
 	return props;
 }
 
-uint32_t active_fb(int fd, uint32_t plane_id) {
+uint32_t get_active_fb(int fd, uint32_t plane_id) {
 	drmModePlane *plane = drmModeGetPlane(fd, plane_id);
 	uint32_t fb_id = plane->fb_id;
 	drmModeFreePlane(plane);
