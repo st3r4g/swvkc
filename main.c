@@ -1,10 +1,19 @@
 #define _POSIX_C_SOURCE 200809L
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <strings.h>
-#include <unistd.h>
+#include <legacy_wl_drm.h> // legacy
+#include <backend/input.h>
+#include <backend/screen.h>
+#include <backend/vulkan.h>
+#include <core/compositor.h>
+#include <core/data_device_manager.h>
+#include <core/output.h>
+#include <core/seat.h>
+#include <core/keyboard.h>
+#include <core/wl_subcompositor.h>
+#include <extensions/xdg_shell/xdg_wm_base.h>
+#include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
+#include <extensions/fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.h>
+#include <util/box.h>
+#include <util/log.h>
 
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
@@ -12,40 +21,20 @@
 #include <linux-dmabuf-unstable-v1-server-protocol.h>
 #include <fullscreen-shell-unstable-v1-server-protocol.h>
 
-#include <legacy_wl_drm.h> // legacy
-#include <backend/input.h>
-#include <backend/screen.h>
-#include <backend/vulkan.h>
-#include <util/log.h>
-#include <core/compositor.h>
-#include <core/data_device_manager.h>
-#include <core/output.h>
-#include <core/seat.h>
-#include <core/keyboard.h>
-#include <core/wl_subcompositor.h>
-#include <core/wl_surface.h>
-#include <extensions/xdg_shell/xdg_wm_base.h>
-#include <extensions/xdg_shell/xdg_surface.h>
-#include <extensions/xdg_shell/xdg_toplevel.h>
-#include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
-#include <extensions/linux-dmabuf-unstable-v1/wl_buffer_dmabuf.h>
-#include <extensions/fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.h>
-#include <util/box.h>
-#include <util/util.h>
-
-#include <backend/vulkan.h>
-
 #include <linux/input-event-codes.h>
+
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <unistd.h>
 
 struct server {
 	struct wl_display *display;
 
 	struct input *input;
 	struct screen *screen;
-
-	struct wl_list seat_list;
-
-	struct wl_list xdg_surface_list;
 /*
  * Temporary way to manage surfaces, it should evolve into a tree
  */
@@ -249,48 +238,7 @@ struct surface_node *match_app_id(struct server *server, char *name) {
 		return NULL;
 }
 
-void server_window_create(struct xdg_toplevel_data *new) {
-/*	if (!wl_list_empty(&window_list)) {
-		struct xdg_toplevel_data *old;
-		old = wl_container_of(window_list.next, old, link);
-		wl_keyboard_send_leave(old->xdg_surface_data->keyboard, 0,
-		old->xdg_surface_data->surface);
-		focused = NULL;
-	}
-	wl_list_insert(&window_list, &new->link);*/
-}
-
-void server_window_destroy(struct xdg_toplevel_data *old) {
-/*	struct wl_array array;
-	wl_array_init(&array); //Need the currently pressed keys
-//	wl_keyboard_send_leave(resource, 0, xdg_surface->surface);
-	wl_list_remove(&old->link);
-	if (!wl_list_empty(&window_list)) {
-		struct xdg_toplevel_data *new;
-		new = wl_container_of(window_list.next, new, link);
-		wl_keyboard_send_enter(new->xdg_surface_data->keyboard, 0,
-		new->xdg_surface_data->surface, &array);
-		focused = new;
-	} else {
-		focused = NULL;
-	}*/
-}
-
-void server_set_focus(struct xdg_toplevel_data *data) {
-}
-
 void server_change_focus(struct server *self, struct surface_node *node) {
-/*	errlog("focused window: %s", focused->app_id);
-	errlog("new window: %s", data->app_id);
-	struct xdg_surface0 *old = focused->xdg_surface_data;
-	if (old->self)
-		wl_keyboard_send_leave(old->keyboard, 0, old->surface);
-	struct wl_array array;
-	wl_array_init(&array); //Need the currently pressed keys
-	struct xdg_surface0 *new = data->xdg_surface_data;
-	if (new->self)
-		wl_keyboard_send_enter(new->keyboard, 0, new->surface, &array);
-	focused = data;*/
 	struct surface *focused = focused_surface(self);
 	struct xdg_surface0 *x = focused->base_role_object;
 	wl_keyboard_send_leave(x->keyboard, 0, x->surface);
@@ -333,12 +281,6 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 		wl_event_source_remove(server->event); // sometimes fails with mpv (?)
 	close(fd);
 
-/*	if (!wl_list_empty(&server->mapped_surfaces_list)) {
-		struct surface *surface = focused_surface(server);
-		if (surface->current->previous_buffer)
-			wl_buffer_send_release(surface->current->previous_buffer);
-	}*/
-
 	if (wl_list_length(&server->bufres_list) > 1) {
 		struct bufres_node *node;
 		node = wl_container_of(server->bufres_list.prev, node, link);
@@ -352,7 +294,6 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 
 static int gpu_ev_handler(int fd, uint32_t mask, void *data) {
 	drm_handle_event(fd);
-
 	return 0;
 }
 
@@ -425,8 +366,7 @@ uint32_t id) {
 	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&wl_seat_interface, version, id);
-	struct seat *seat = seat_new(resource, server->input);
-	wl_list_insert(&server->seat_list, &seat->link);
+	seat_new(resource, server->input);
 }
 
 static void subcompositor_bind(struct wl_client *client, void *data, uint32_t
@@ -490,12 +430,8 @@ static bool global_filter(const struct wl_client *client, const struct wl_global
 
 int main(int argc, char *argv[]) {
 	struct server *server = calloc(1, sizeof(struct server));
-	wl_list_init(&server->seat_list);
-	wl_list_init(&server->xdg_surface_list);
 	wl_list_init(&server->mapped_surfaces_list);
 	wl_list_init(&server->bufres_list);
-
-//	wl_list_init(&window_list);
 
 	bool dmabuf = false, dmabuf_mod = false;
 	vulkan_init(&dmabuf, &dmabuf_mod);
