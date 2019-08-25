@@ -36,7 +36,7 @@ static const struct wl_seat_interface impl = {
 
 void seat_free(struct wl_resource *resource) {
 	struct seat *seat = wl_resource_get_user_data(resource);
-	wl_list_remove(&seat->link);
+	free(seat);
 }
 
 struct seat *seat_new(struct wl_resource *resource, struct input *input) {
