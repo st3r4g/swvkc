@@ -40,6 +40,7 @@ int32_t height, uint32_t format, uint32_t num_planes, int32_t *fds, uint32_t
 *offsets, uint32_t *strides, uint64_t *modifiers);
 void screen_fb_schedule_destroy(struct screen *screen, struct fb *fb);
 
+void client_buffer_on_primary(struct screen *S, struct fb *fb);
 void client_buffer_on_overlay(struct screen *S, struct fb *fb, uint32_t width,
 uint32_t height);
 

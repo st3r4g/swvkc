@@ -90,7 +90,10 @@ void dmabuf(struct wl_resource *dmabuf_resource, struct screen *screen) {
 	struct fb *fb = wl_buffer_dmabuf_get_subsystem_object(dmabuf_resource,
 	 SUBSYSTEM_DRM);
 
-	if (screen_is_overlay_supported(screen))
+	struct box screen_size = screen_get_dimensions(screen);
+	if ((int32_t)width == screen_size.width && (int32_t)height == screen_size.height)
+		client_buffer_on_primary(screen, fb);
+	else if (screen_is_overlay_supported(screen))
 		client_buffer_on_overlay(screen, fb, width, height);
 //	else
 //		vulkan_main(1, fds[0], width, height, strides[0], mods[0]);
@@ -149,17 +152,21 @@ void surface_unmap_notify(struct surface *surface, void *user_data) {
 
 void surface_contents_update_notify(struct surface *surface, void *user_data) {
 	struct server *server = user_data;
-/*
- * At this point `page_flip_is_pending()` should always be false (unless the
- * client commits more than one buffer update per signaled frame on purpose)
- */
 	struct wl_resource *buffer = surface->current->buffer;
 
+	/*
+	 * If the buffer has been detached, do nothing
+	 */
+	if (!buffer)
+		return;
+
 	if (screen_page_flip_is_pending(server->screen)) {
-		errlog("ERROR: buffer already committed");
-		if (buffer)
-			wl_buffer_send_release(buffer);
-	} else if (buffer && surface == focused_surface(server)) {
+		errlog("WARNING: contents update discarded (page flip is pending)");
+		wl_buffer_send_release(buffer);
+	} else if (surface != focused_surface(server)) {
+		errlog("WARNING: contents update discarded (surface is not focused)");
+		wl_buffer_send_release(buffer);
+	} else {
 		struct screen *screen = server->screen;
 		if (wl_buffer_is_dmabuf(buffer)) {
 			dmabuf(buffer, screen);

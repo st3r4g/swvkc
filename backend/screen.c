@@ -364,6 +364,17 @@ bool screen_page_flip_is_pending(struct screen *self) {
 	return self->pending_page_flip;
 }
 
+void client_buffer_on_primary(struct screen *S, struct fb *fb) {
+	assert(!S->req);
+
+	S->req = drmModeAtomicAlloc();
+	if (!S->req)
+		fprintf(stderr, "atomic allocation failed\n");
+
+	if (drmModeAtomicAddProperty(S->req, S->plane_id, S->props_plane_fb_id, fb->id) < 0)
+		fprintf(stderr, "atomic add property failed\n");
+}
+
 void client_buffer_on_overlay(struct screen *S, struct fb *fb, uint32_t width,
 uint32_t height) {
 	assert(!S->req);
