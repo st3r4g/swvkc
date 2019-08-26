@@ -104,6 +104,7 @@ void shmbuf(struct wl_resource *buffer) {
  */
 
 void surface_map_notify(struct surface *surface, void *user_data) {
+// TODO: Handle subsurfaces
 	struct server *server = user_data;
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct surface *old = focused_surface(server);

@@ -40,6 +40,7 @@ map_condition_field condition) {
 	xdg_surface->map_conditions |= condition;
 	if (xdg_surface_is_mapped(xdg_surface)) {
 		struct surface *surface = wl_resource_get_user_data(xdg_surface->surface);
+		// TODO: lump the following lines in a func in surface.c
 		void *user_data = surface->surface_events.user_data;
 		surface->surface_events.map(surface, user_data);
 		surface->is_mapped = true;

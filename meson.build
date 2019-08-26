@@ -12,7 +12,7 @@ x = 'extensions/'
 src = [b+'bufmgr_gbm.c', b+'input.c', b+'screen.c', b+'vulkan.c']
 src += [c+'compositor.c', c+'data_device_manager.c', c+'keyboard.c',
 	c+'output.c', c+'wl_pointer.c', c+'region.c', c+'seat.c',
-	c+'wl_subcompositor.c', c+'wl_subsurface.c', c+'wl_surface.c']
+	c+'wl_subcompositor.c', c+'subsurface.c', c+'wl_surface.c']
 src += [u+'algebra.c', u+'log.c', u+'util.c', u+'my_drm_handle_event.c']
 src += [x+'xdg_shell/xdg_wm_base.c',
 	x+'xdg_shell/xdg_positioner.c', x+'xdg_shell/xdg_surface.c',

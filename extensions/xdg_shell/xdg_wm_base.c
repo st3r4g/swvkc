@@ -10,10 +10,12 @@
 
 static void destroy(struct wl_client *client, struct wl_resource *resource) {
 	struct xdg_wm_base *xdg_wm_base = wl_resource_get_user_data(resource);
-	if (xdg_wm_base->xdg_surface_count != 0)
+	if (xdg_wm_base->xdg_surface_count != 0) {
 		wl_resource_post_error(resource,
 		 XDG_WM_BASE_ERROR_DEFUNCT_SURFACES, "xdg_wm_base was destroyed \
 		  before children");
+		return;
+	}
 	wl_resource_destroy(resource);
 }
 
