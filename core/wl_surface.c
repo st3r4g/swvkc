@@ -36,8 +36,10 @@ static void damage(struct wl_client *client, struct wl_resource
 static void frame(struct wl_client *client, struct wl_resource
 *resource, uint32_t callback) {
 	struct surface *surface = wl_resource_get_user_data(resource);
-	if (surface->frame)
+	if (surface->frame) {
+		wl_callback_send_done(surface->frame, 0);
 		wl_resource_destroy(surface->frame);
+	}
 
 	surface->frame = wl_resource_create(client, &wl_callback_interface, 1, callback);
 }
