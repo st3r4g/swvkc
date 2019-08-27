@@ -18,10 +18,26 @@ void *user_data) {
 	return WL_ITERATOR_CONTINUE;
 }
 
+static enum wl_iterator_result find_output(struct wl_resource *resource,
+void *user_data) {
+	if (!strcmp(wl_resource_get_class(resource), "wl_output")) {
+		struct wl_resource **keyboard_resource = user_data;
+		*keyboard_resource = resource;
+		return WL_ITERATOR_STOP;
+	}
+	return WL_ITERATOR_CONTINUE;
+}
+
 struct wl_resource *util_wl_client_get_keyboard(struct wl_client *client) {
 	struct wl_resource *keyboard_resource = NULL;
 	wl_client_for_each_resource(client, find_keyboard, &keyboard_resource);
 	return keyboard_resource;
+}
+
+struct wl_resource *util_wl_client_get_output(struct wl_client *client) {
+	struct wl_resource *output_resource = NULL;
+	wl_client_for_each_resource(client, find_output, &output_resource);
+	return output_resource;
 }
 
 char *read_file(const char *path)

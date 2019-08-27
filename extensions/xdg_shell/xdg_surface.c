@@ -42,6 +42,8 @@ map_condition_field condition) {
 		struct surface *surface = wl_resource_get_user_data(xdg_surface->surface);
 		// TODO: lump the following lines in a func in surface.c
 		void *user_data = surface->surface_events.user_data;
+/*		struct wl_client *client = wl_resource_get_client(xdg_surface->surface);
+		wl_surface_send_enter(xdg_surface->surface, util_wl_client_get_output(client));*/
 		surface->surface_events.map(surface, user_data);
 		surface->is_mapped = true;
 	}
