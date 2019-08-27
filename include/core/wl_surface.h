@@ -56,6 +56,8 @@ struct dbuf_state {
 };
 
 struct surface {
+	struct wl_resource *resource;
+
 	struct dbuf_state *current, *pending;
 
 	uint8_t staged; // bitmask

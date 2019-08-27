@@ -14,6 +14,7 @@
 #include <extensions/fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.h>
 #include <util/box.h>
 #include <util/log.h>
+#include <util/util.h>
 
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
@@ -46,6 +47,7 @@ struct server {
 
 struct surface_node {
 	struct surface *surface;
+	struct wl_resource *keyboard;
 	struct wl_list link;
 };
 
@@ -60,6 +62,12 @@ struct surface *focused_surface(struct server *server) {
 	struct surface_node *node;
 	node = wl_container_of(server->mapped_surfaces_list.next, node, link);
 	return node->surface;
+}
+
+struct wl_resource *focused_surface_keyboard(struct server *server) {
+	struct surface_node *node;
+	node = wl_container_of(server->mapped_surfaces_list.next, node, link);
+	return node->keyboard;
 }
 
 void dmabuf(struct wl_resource *dmabuf_resource, struct screen *screen) {
@@ -104,19 +112,26 @@ void shmbuf(struct wl_resource *buffer) {
  */
 
 void surface_map_notify(struct surface *surface, void *user_data) {
-// TODO: Handle subsurfaces
 	struct server *server = user_data;
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct surface *old = focused_surface(server);
-		if (old->base_role == BASE_ROLE_XDG_SURFACE) {
-			struct xdg_surface0 *x = old->base_role_object;
-			// TODO: protect
-			wl_keyboard_send_leave(x->keyboard, 0, x->surface);
-		}
+		struct wl_resource *keyboard = focused_surface_keyboard(server);
+		if (keyboard)
+			wl_keyboard_send_leave(keyboard, 0, old->resource);
 	}
 	errlog("A surface has been mapped");
+
+	struct wl_array array;
+	wl_array_init(&array); //Need the currently pressed keys
+	struct wl_client *client = wl_resource_get_client(surface->resource);
+	struct wl_resource *keyboard = NULL;
+	keyboard = util_wl_client_get_keyboard(client);
+	if (keyboard)
+		wl_keyboard_send_enter(keyboard, 0, surface->resource, &array);
+
 	struct surface_node *node = malloc(sizeof(struct surface_node));
 	node->surface = surface;
+	node->keyboard = keyboard;
 	wl_list_insert(&server->mapped_surfaces_list, &node->link);
 }
 
@@ -136,11 +151,9 @@ void surface_unmap_notify(struct surface *surface, void *user_data) {
 		struct wl_array array;
 		wl_array_init(&array); //Need the currently pressed keys
 		struct surface *new = focused_surface(server);
-		if (new->base_role == BASE_ROLE_XDG_SURFACE) {
-			struct xdg_surface0 *x = new->base_role_object;
-			// TODO: protect
-			wl_keyboard_send_enter(x->keyboard, 0, x->surface, &array);
-		}
+		struct wl_resource *keyboard = focused_surface_keyboard(server);
+		if (keyboard)
+			wl_keyboard_send_enter(keyboard, 0, new->resource, &array);
 	}
 }
 
@@ -246,20 +259,15 @@ struct surface_node *match_app_id(struct server *server, char *name) {
 
 void server_change_focus(struct server *self, struct surface_node *node) {
 	struct surface *focused = focused_surface(self);
-	if (focused->base_role == BASE_ROLE_XDG_SURFACE) {
-		struct xdg_surface0 *x = focused->base_role_object;
-		if (x->keyboard)
-			wl_keyboard_send_leave(x->keyboard, 0, x->surface);
-	}
+	struct wl_resource *keyboard = focused_surface_keyboard(self);
+	if (keyboard)
+		wl_keyboard_send_leave(keyboard, 0, focused->resource);
 	wl_list_remove(&node->link);
 	wl_list_insert(&self->mapped_surfaces_list, &node->link);
 	struct wl_array array;
 	wl_array_init(&array); //Need the currently pressed keys
-	if (node->surface->base_role == BASE_ROLE_XDG_SURFACE) {
-		struct xdg_surface0 *x2 = node->surface->base_role_object;
-		if (x2->keyboard)
-			wl_keyboard_send_enter(x2->keyboard, 0, x2->surface, &array);
-	}
+	if (node->keyboard)
+		wl_keyboard_send_enter(node->keyboard, 0, node->surface->resource, &array);
 }
 
 static void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
@@ -338,11 +346,9 @@ static int key_ev_handler(int key_fd, uint32_t mask, void *data) {
 			if (match)
 				server_change_focus(server, match);
 		} else if (!wl_list_empty(&server->mapped_surfaces_list)) {
-			struct surface *surface = focused_surface(server);
-			struct xdg_surface0 *xdg_surface = surface->base_role_object;
-			struct wl_resource *resource = xdg_surface->keyboard;
-			if (resource) {
-				struct keyboard *data = wl_resource_get_user_data(resource);
+			struct wl_resource *keyboard = focused_surface_keyboard(server);
+			if (keyboard) {
+				struct keyboard *data = wl_resource_get_user_data(keyboard);
 				if (data)
 				keyboard_send(data, &aaa);
 			}

@@ -95,14 +95,6 @@ static void set_window_geometry(struct wl_client *client, struct wl_resource
 
 static void ack_configure(struct wl_client *client, struct wl_resource
 *resource, uint32_t serial) {
-	struct xdg_surface0 *xdg_surface = wl_resource_get_user_data(resource);
-	struct wl_array array;
-	wl_array_init(&array); //Need the currently pressed keys
-	xdg_surface->keyboard = util_wl_client_get_keyboard(client);
-//	wl_client_for_each_resource(client, keyboard_set, xdg_surface);
-	if (xdg_surface->keyboard) //TODO: not sure this is the right place
-	wl_keyboard_send_enter(xdg_surface->keyboard, 0, xdg_surface->surface,
-	&array);
 }
 
 static const struct xdg_surface_interface impl = {

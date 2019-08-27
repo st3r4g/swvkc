@@ -23,7 +23,6 @@ struct xdg_surface0 {
 	struct wl_resource *self;
 	struct wl_resource *wm_base;
 	struct wl_resource *surface;
-	struct wl_resource *keyboard;
 	struct server *server;
 	uint8_t map_conditions; // bitmask
 	struct xdg_surface_state0 *pending, *current;
