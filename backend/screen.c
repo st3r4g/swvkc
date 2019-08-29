@@ -89,7 +89,8 @@ struct screen {
 };
 
 int drm_setup(struct screen *);
-struct fb *screen_fb_create_main(struct screen *screen, int width, int height);
+struct fb *screen_fb_create_main(struct screen *screen, int width, int height,
+bool linear);
 void screen_fb_destroy(struct screen *screen, struct fb *fb);
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
@@ -102,7 +103,7 @@ unsigned int, void*, bool), void *user_data, bool dmabuf_mod) {
 	screen->bufmgr = bufmgr_create(screen->gpu_fd);
 	struct box screen_size = screen_get_dimensions(screen);
 	screen->fb = screen_fb_create_main(screen, screen_size.width,
-	 screen_size.height);
+	 screen_size.height, !dmabuf_mod);
 
 	return screen;
 }
@@ -480,8 +481,10 @@ void screen_fb_destroy(struct screen *screen, struct fb *fb) {
 /*
  * DRM Framebuffer manager: public code
  */
-struct fb *screen_fb_create_main(struct screen *screen, int width, int height) {
-	struct buffer *buffer = bufmgr_buffer_create(screen->bufmgr, width, height);
+struct fb *screen_fb_create_main(struct screen *screen, int width, int height,
+bool linear) {
+	struct buffer *buffer = bufmgr_buffer_create(screen->bufmgr, width,
+	 height, linear);
 	if (!buffer)
 		return NULL;
 	return screen_fb_create(screen, buffer);

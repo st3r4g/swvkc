@@ -1,9 +1,11 @@
 #include <inttypes.h>
+#include <stdbool.h>
 
 struct bufmgr *bufmgr_create(int drm_fd);
 void bufmgr_destroy(struct bufmgr *self);
 
-struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height);
+struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height,
+bool linear);
 //struct buffer *bufmgr_buffer_import_from_dmabuf(struct bufmgr *self, int
 //num_fds, int32_t *dmabuf_fds);
 struct buffer *bufmgr_buffer_import_from_dmabuf(struct bufmgr *self, int

@@ -1,3 +1,5 @@
+#include <backend/bufmgr.h>
+
 #include <gbm.h>
 
 #include <stdio.h>
@@ -18,22 +20,10 @@ struct buffer {
 	struct gbm_bo *gbm_bo;
 };
 
-uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
-
 struct bufmgr *bufmgr_create(int drm_fd) {
 	struct gbm_device *gbm_device = gbm_create_device(drm_fd);
 	if (!gbm_device) {
 		fprintf(stderr, "gbm_create_device failed\n");
-		return NULL;
-	}
-
-/*	if (!dmabuf_mod) XXX: otherwise GBM creates a bad bo for scanout
-		flags |= GBM_BO_USE_LINEAR;*/
-
-	int ret = gbm_device_is_format_supported(gbm_device,
-	GBM_BO_FORMAT_XRGB8888, flags);
-	if (!ret) {
-		fprintf(stderr, "format unsupported\n");
 		return NULL;
 	}
 
@@ -51,13 +41,26 @@ void bufmgr_destroy(struct bufmgr *self) {
 	free(self);
 }
 
-struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height) {
+struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height,
+bool linear) {
 	if (!self) {
 		fprintf(stderr, "bufmgr_buffer_create: invalid bufmgr\n");
 		return NULL;
 	}
+
+	uint32_t flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
+	if (linear)
+		flags |= GBM_BO_USE_LINEAR;
+
+	if (!gbm_device_is_format_supported(self->gbm_device,
+	 GBM_BO_FORMAT_XRGB8888, flags)) {
+		fprintf(stderr, "format unsupported\n");
+		return NULL;
+	}
+
 	struct gbm_bo *gbm_bo = gbm_bo_create(self->gbm_device, width,
 	 height, GBM_BO_FORMAT_XRGB8888, flags);
+
 /*	uint64_t modifier = I915_FORMAT_MOD_X_TILED;
 	S->gbm_bo = gbm_bo_create_with_modifiers(S->gbm_device,
 			screen_size.width, screen_size.height,

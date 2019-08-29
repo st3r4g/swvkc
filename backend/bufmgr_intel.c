@@ -1,3 +1,5 @@
+#include <backend/bufmgr.h>
+
 #include <util/log.h>
 
 #include <drm_fourcc.h>
@@ -46,9 +48,10 @@ void bufmgr_destroy(struct bufmgr *self) {
 	free(self);
 }
 
-struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height) {
+struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height,
+bool linear) {
 	int bpp = 32;
-	uint32_t tiling = I915_TILING_NONE;
+	uint32_t tiling = linear ? I915_TILING_NONE : I915_TILING_X;
 	long unsigned int stride;
 	drm_intel_bo *bo = drm_intel_bo_alloc_tiled(self->bufmgr, "main", width,
 	 height, bpp/8, &tiling, &stride, 0);
