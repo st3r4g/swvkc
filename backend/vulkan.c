@@ -124,9 +124,6 @@ VkInstance create_instance(bool *dmabuf, bool *dmabuf_mod) {
 	(PFN_vkGetMemoryHostPointerPropertiesEXT) vkGetInstanceProcAddr(inst,
 	"vkGetMemoryHostPointerPropertiesEXT");
 
-	vkGetFenceFd = (PFN_vkGetFenceFdKHR) vkGetInstanceProcAddr(inst,
-	"vkGetFenceFdKHR");
-
 	return inst;
 }
 
@@ -172,6 +169,8 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 		VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
 		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_FENCE_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME,
 		VK_KHR_BIND_MEMORY_2_EXTENSION_NAME,
 		VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME,
 		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
@@ -209,6 +208,10 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 		fprintf(stderr, "ERROR: create_device() failed.\n");
 		return VK_NULL_HANDLE;
 	}
+
+	vkGetFenceFd = (PFN_vkGetFenceFdKHR) vkGetDeviceProcAddr(dev,
+	"vkGetFenceFdKHR");
+
 	return dev;
 }
 
@@ -695,10 +698,10 @@ int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) 
 
 void vulkan_create_screen_image(struct buffer *buffer) {
 	int fd = buffer_get_fd(buffer);
-	int width = buffer_get_width(buffer);
-	int height = buffer_get_height(buffer);
-	int stride = buffer_get_stride(buffer, 0);
-	int mod = buffer_get_modifier(buffer);
+	uint32_t width = buffer_get_width(buffer);
+	uint32_t height = buffer_get_height(buffer);
+	uint32_t stride = buffer_get_stride(buffer, 0);
+	uint64_t mod = buffer_get_modifier(buffer);
 	screen_image = create_image(width, height, stride, mod, device);
 	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
 	bind_image_memory(device, screen_image, screen_memory);
