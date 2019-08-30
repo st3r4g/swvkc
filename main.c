@@ -116,7 +116,7 @@ void surface_map_notify(struct surface *surface, void *user_data) {
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct surface *old = focused_surface(server);
 		struct wl_resource *keyboard = focused_surface_keyboard(server);
-		if (keyboard)
+		if (keyboard && surface->role != ROLE_SUBSURFACE)
 			wl_keyboard_send_leave(keyboard, 0, old->resource);
 	}
 	errlog("A surface has been mapped");
@@ -126,7 +126,7 @@ void surface_map_notify(struct surface *surface, void *user_data) {
 	struct wl_client *client = wl_resource_get_client(surface->resource);
 	struct wl_resource *keyboard = NULL;
 	keyboard = util_wl_client_get_keyboard(client);
-	if (keyboard)
+	if (keyboard && surface->role != ROLE_SUBSURFACE)
 		wl_keyboard_send_enter(keyboard, 0, surface->resource, &array);
 
 	struct surface_node *node = malloc(sizeof(struct surface_node));
@@ -152,7 +152,7 @@ void surface_unmap_notify(struct surface *surface, void *user_data) {
 		wl_array_init(&array); //Need the currently pressed keys
 		struct surface *new = focused_surface(server);
 		struct wl_resource *keyboard = focused_surface_keyboard(server);
-		if (keyboard)
+		if (keyboard && new->role != ROLE_SUBSURFACE)
 			wl_keyboard_send_enter(keyboard, 0, new->resource, &array);
 	}
 }

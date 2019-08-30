@@ -2,6 +2,7 @@
 
 #include <core/wl_surface.h>
 #include <extensions/xdg_shell/xdg_wm_base.h>
+#include <extensions/xdg_shell/xdg_positioner.h>
 
 #include <wayland-server-core.h>
 #include <xdg-shell-server-protocol.h>
@@ -21,7 +22,9 @@ static void destroy(struct wl_client *client, struct wl_resource *resource) {
 
 static void create_positioner(struct wl_client *client, struct wl_resource
 *resource, uint32_t id) {
-
+	struct wl_resource *positioner = wl_resource_create(client,
+	&xdg_positioner_interface, 1, id);
+	xdg_positioner_new(positioner);
 }
 
 static void child_destroy_notify(void *user_data) {

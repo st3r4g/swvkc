@@ -8,6 +8,7 @@
 #include <core/wl_surface.h>
 #include <core/wl_surface_staged_field.h>
 #include <extensions/xdg_shell/xdg_surface.h>
+#include <extensions/xdg_shell/xdg_popup.h>
 #include <util/log.h>
 #include <util/util.h>
 
@@ -80,7 +81,9 @@ uint32_t id) {
 
 static void get_popup(struct wl_client *client, struct wl_resource *resource,
 uint32_t id, struct wl_resource *parent, struct wl_resource *positioner) {
-
+	struct wl_resource *popup = wl_resource_create(client,
+	&xdg_popup_interface, 1, id);
+	xdg_popup_new(popup);
 }
 
 static void set_window_geometry(struct wl_client *client, struct wl_resource
