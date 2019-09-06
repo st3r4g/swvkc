@@ -302,6 +302,9 @@ unsigned int tv_usec, void *user_data) {
 
 uint32_t get_active_fb(int fd, uint32_t plane_id);
 
+int iffdtcn = 0;
+int iffdtc[64] = {-1};
+
 static void page_flip_handler(int fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data) {
 	struct screen *screen = user_data;
@@ -320,6 +323,11 @@ tv_sec, unsigned int tv_usec, void *user_data) {
 
 	screen->pending_page_flip = false;
 	screen->vblank_has_page_flip = true;
+
+// Close in fence FD to close
+	for (int i=0; i<iffdtcn; i++)
+		close(iffdtc[i]);
+	iffdtcn = 0;
 }
 
 void drm_handle_event(int fd) {
@@ -401,7 +409,7 @@ uint32_t height) {
 		fprintf(stderr, "atomic add property failed\n");
 }
 
-void screen_main(struct screen *S) {
+void screen_main(struct screen *S, int in_fence) {
 	assert(!S->req);
 
 	S->req = drmModeAtomicAlloc();
@@ -411,6 +419,12 @@ void screen_main(struct screen *S) {
 	if (drmModeAtomicAddProperty(S->req, S->plane_id,
 	S->props_plane_fb_id, S->fb->id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
+
+	errlog("in_fence: %d", in_fence);
+	if (drmModeAtomicAddProperty(S->req, S->plane_id,
+	S->props.plane.in_fence_fd, in_fence) < 0)
+		fprintf(stderr, "atomic add property failed\n");
+	iffdtc[iffdtcn++] = in_fence;
 }
 
 int screen_get_gpu_fd(struct screen *S) {

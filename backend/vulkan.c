@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,7 +10,7 @@
 #include <vulkan/vulkan.h>
 #include <util/log.h>
 
-const bool DEBUG = false;
+const bool DEBUG = true;
 
 struct global {
 	bool dmabuf_mod;
@@ -26,6 +27,8 @@ VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
 }
 
 static PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerProperties = 0;
+static PFN_vkImportSemaphoreFdKHR vkImportSemaphoreFd = 0;
+static PFN_vkGetSemaphoreFdKHR vkGetSemaphoreFd = 0;
 static PFN_vkGetFenceFdKHR vkGetFenceFd = 0;
 
 static int compare_ext_names(const void *a_, const void *b_) {
@@ -71,7 +74,8 @@ VkInstance create_instance(bool *dmabuf, bool *dmabuf_mod) {
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 		VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
-		VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME
+		VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME
 	};
 
 	uint32_t enabled_ext_count = 0;
@@ -149,6 +153,8 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 	*dmabuf &= check_ext(n_ext, ext_p, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_FENCE_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME);
+	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME);
+	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
 	*dmabuf_mod = *dmabuf;
 	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_KHR_BIND_MEMORY_2_EXTENSION_NAME);
 	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
@@ -162,7 +168,9 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 		VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
 		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_FENCE_EXTENSION_NAME,
-		VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME
+		VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME
 	};
 
 	const char *enabled_ext_dmabuf_mod[] = {
@@ -171,6 +179,8 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_FENCE_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
+		VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
 		VK_KHR_BIND_MEMORY_2_EXTENSION_NAME,
 		VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME,
 		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
@@ -209,8 +219,14 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 		return VK_NULL_HANDLE;
 	}
 
+	vkGetSemaphoreFd = (PFN_vkGetSemaphoreFdKHR) vkGetDeviceProcAddr(dev,
+	"vkGetSemaphoreFdKHR");
+
 	vkGetFenceFd = (PFN_vkGetFenceFdKHR) vkGetDeviceProcAddr(dev,
 	"vkGetFenceFdKHR");
+
+	vkImportSemaphoreFd = (PFN_vkImportSemaphoreFdKHR) vkGetDeviceProcAddr(dev,
+	"vkImportSemaphoreFdKHR");
 
 	return dev;
 }
@@ -626,34 +642,112 @@ VkBuffer create_buffer(uint32_t size, VkDeviceMemory *mem, VkDevice dev) {
 	return buf;
 }
 
-void vulkan_render_shm_buffer(uint32_t width, uint32_t height, uint32_t stride,
-uint32_t format, uint8_t *data) {
+int vulkan_render_shm_buffer(uint32_t width, uint32_t height, uint32_t stride,
+uint32_t format, uint8_t *data, int out_fence_fd) {
+	int semaphore_count = out_fence_fd < 0 ? 0 : 1;
+// XXX
+	VkSemaphore semaphore, signal_sem;
+	VkSemaphoreCreateInfo semaphoreCreateInfo = {
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		.pNext = NULL,
+		.flags = 0
+	};
+	VkExportSemaphoreCreateInfo bbb = {
+		.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO,
+		.pNext = NULL,
+		.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT
+	};
+	VkSemaphoreCreateInfo signalCreateInfo = {
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		.pNext = &bbb,
+		.flags = 0
+	};
+	vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &semaphore);
+	vkCreateSemaphore(device, &signalCreateInfo, NULL, &signal_sem);
+	errlog("out_fence_fd %d", out_fence_fd);
+	errlog("semaphore_count %d", semaphore_count);
+	VkImportSemaphoreFdInfoKHR importSemaphoreFdInfo = {
+		.sType = VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR,
+		.pNext = NULL,
+		.semaphore = semaphore,
+		.flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT,
+		.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
+		.fd = out_fence_fd
+	};
+	if (vkImportSemaphoreFd(device, &importSemaphoreFdInfo) == VK_ERROR_INVALID_EXTERNAL_HANDLE) {
+		fprintf(stderr, "ERROR: vkImportSemaphoreFd failed.\n");
+	}
+//	close(out_fence_fd); //TODO: remove probably, should already be closed on successful import
+// XXX
 	uint32_t buffer_size = stride*height;
 	VkDeviceMemory mem;
 	VkBuffer buffer = create_buffer(buffer_size, &mem, device);
 	void *dest;
 	vkMapMemory(device, mem, 0, buffer_size, 0, &dest);
-	memcpy(dest, data, (size_t) buffer_size);
+	memcpy(dest, data, (size_t) buffer_size); // takes several ms
 	vkUnmapMemory(device, mem);
 
 	commands[1] = record_command_copy3(device, command_pool, buffer,
 	screen_image, width, height);
+	VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 	VkSubmitInfo submitInfo = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.waitSemaphoreCount = 1,
+		.pWaitSemaphores = &semaphore,
+		.pWaitDstStageMask = &flags,
 		.commandBufferCount = 1,
-		.pCommandBuffers = commands+1
+		.pCommandBuffers = commands+1,
+		.signalSemaphoreCount = 1,
+		.pSignalSemaphores = &signal_sem
 	};
 	VkFence fence;
+	VkExportFenceCreateInfo ooo = {
+		.sType = VK_STRUCTURE_TYPE_EXPORT_FENCE_CREATE_INFO,
+		.pNext = NULL,
+		.handleTypes = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT
+	};
 	VkFenceCreateInfo info = {
-		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
-		};
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		.pNext = &ooo,
+		.flags = 0
+	};
 	vkCreateFence(device, &info, NULL, &fence);
 	vkQueueSubmit(queue, 1, &submitInfo, fence);
-	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-	vkResetFences(device, 1, &fence);
+//	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+//	XXX pass this fence into IN_FENCE_FD
+//	vkResetFences(device, 1, &fence);
 
-	vkDestroyBuffer(device, buffer, NULL);
-	vkFreeMemory(device, mem, NULL);
+//	vkDestroyBuffer(device, buffer, NULL);
+//	vkFreeMemory(device, mem, NULL);
+// XXX
+	int fence2_fd = -1;
+	VkFenceGetFdInfoKHR getFdInfo2 = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_GET_FD_INFO_KHR,
+		.pNext = 0,
+		.fence = fence,
+		.handleType = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT
+	};
+	if (vkGetFenceFd(device, &getFdInfo2, &fence2_fd)) {
+		fprintf(stderr, "ERROR: vkGetFenceFd failed.\n");
+	}
+	errlog("in_fence with fence: %d, signaled?: %d", fence2_fd, vkGetFenceStatus(device, fence) == VK_SUCCESS);
+
+	int fence_fd = -1;
+	VkSemaphoreGetFdInfoKHR getFdInfo = {
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
+		.pNext = 0,
+		.semaphore = signal_sem,
+		.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT
+	};
+
+	if (vkGetSemaphoreFd(device, &getFdInfo, &fence_fd)) {
+		fprintf(stderr, "ERROR: vkGetSemaphoreFd failed.\n");
+	}
+	errlog("in_fence with semaphore: %d", fence_fd);
+
+	close(fence_fd);
+	return fence2_fd; // choose which fence to return
+// XXX
 }
 
 int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) {
@@ -712,7 +806,7 @@ void vulkan_create_screen_image(struct buffer *buffer) {
 		.commandBufferCount = 1,
 		.pCommandBuffers = commands
 	};
-	VkFenceCreateInfo info = {
+/*	VkFenceCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
 	};
 	vkCreateFence(device, &info, NULL, &screen_fence);
@@ -725,7 +819,7 @@ void vulkan_create_screen_image(struct buffer *buffer) {
 		.handleType = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT
 	};
 
-	vkGetFenceFd(device, &getFdInfo, &fence_fd);
+	vkGetFenceFd(device, &getFdInfo, &fence_fd);*/
 	vkQueueSubmit(queue, 1, &submitInfo, screen_fence);
 //	vkResetFences(device, 1, &fence);
 }

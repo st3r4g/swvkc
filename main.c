@@ -56,6 +56,8 @@ struct bufres_node {
 	struct wl_list link;
 };
 
+int my_out_fence_fd = -1;
+
 static int out_fence_handler(int fd, uint32_t mask, void *data);
 
 struct surface *focused_surface(struct server *server) {
@@ -94,7 +96,7 @@ void dmabuf(struct wl_resource *dmabuf_resource, struct screen *screen) {
 //		vulkan_main(1, fds[0], width, height, strides[0], mods[0]);
 }
 
-void shmbuf(struct wl_resource *buffer) {
+void shmbuf(struct wl_resource *buffer, struct screen *screen, int *in_fence) {
 	struct wl_shm_buffer *shm_buffer = wl_shm_buffer_get(buffer);
 	uint32_t width = wl_shm_buffer_get_width(shm_buffer);
 	uint32_t height = wl_shm_buffer_get_height(shm_buffer);
@@ -102,7 +104,7 @@ void shmbuf(struct wl_resource *buffer) {
 	uint32_t format = wl_shm_buffer_get_format(shm_buffer);
 	uint8_t *data = wl_shm_buffer_get_data(shm_buffer);
 	wl_shm_buffer_begin_access(shm_buffer);
-	vulkan_render_shm_buffer(width, height, stride, format, data);
+	*in_fence = vulkan_render_shm_buffer(width, height, stride, format, data, my_out_fence_fd);
 	wl_shm_buffer_end_access(shm_buffer);
 	wl_buffer_send_release(buffer);
 }
@@ -174,6 +176,7 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 		wl_buffer_send_release(buffer);
 	} else {
 		struct screen *screen = server->screen;
+		int in_fence = -1;
 		if (wl_buffer_is_dmabuf(buffer)) {
 			dmabuf(buffer, screen);
 			struct bufres_node *node = malloc(sizeof(*node));
@@ -181,13 +184,17 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 			wl_list_insert(&server->bufres_list, &node->link);
 		}
 		else {
-			shmbuf(buffer);
-			screen_main(screen);
+			shmbuf(buffer, screen, &in_fence);
+			screen_main(screen, in_fence);
 		}
 
 		int out_fence_fd = screen_atomic_commit(screen);
 		if (out_fence_fd < 0)
 			return;
+
+		errlog("presented to screen");
+
+		my_out_fence_fd = dup(out_fence_fd); // XXX
 
 		struct wl_event_loop *el =
 		 wl_display_get_event_loop(server->display);
@@ -273,7 +280,7 @@ void server_change_focus(struct server *self, struct surface_node *node) {
 static void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 	struct server *server = user_data;
-//	errlog("VBLANK");
+	errlog("VBLANK");
 /*
  * Sometimes a page-flip request won't make it to the immediately following
  * vblank due to being issued too close to it. When this happens, we don't want
