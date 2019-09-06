@@ -71,4 +71,4 @@ dep += dependency('gbm') # required for legacy wl_drm and for bufmgr_gbm
 
 inc = include_directories('include')
 
-executable('swvkc', [src, gen], dependencies : dep, include_directories : inc)
+executable('swvkc', [src, gen], dependencies : dep, include_directories : inc, install : true)
