@@ -391,6 +391,22 @@ VkCommandBuffer record_command_clear(VkDevice dev, VkCommandPool pool, VkImage i
 	vkBeginCommandBuffer(cmdbuf, &infoBegin);
 
 	VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+	VkImageMemoryBarrier membar = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+		.pNext = NULL,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+		.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.image = img,
+		.subresourceRange = range
+	};
+	vkCmdPipelineBarrier(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+	 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &membar);
+
 //	VkClearColorValue color = {{0.8984375f, 0.8984375f, 0.9765625f, 1.0f}};
 	VkClearColorValue color = {{0.0f, 0.0f, 0.0f, 1.0f}}; // wow boring
 	vkCmdClearColorImage(cmdbuf, img,
@@ -689,7 +705,7 @@ uint32_t format, uint8_t *data, int out_fence_fd) {
 
 	commands[1] = record_command_copy3(device, command_pool, buffer,
 	screen_image, width, height);
-	VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
 	VkSubmitInfo submitInfo = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.waitSemaphoreCount = 1,
@@ -713,12 +729,10 @@ uint32_t format, uint8_t *data, int out_fence_fd) {
 	};
 	vkCreateFence(device, &info, NULL, &fence);
 	vkQueueSubmit(queue, 1, &submitInfo, fence);
-//	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-//	XXX pass this fence into IN_FENCE_FD
-//	vkResetFences(device, 1, &fence);
+	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX); // XXX: remove this wait (~1ms)
 
-//	vkDestroyBuffer(device, buffer, NULL);
-//	vkFreeMemory(device, mem, NULL);
+	vkDestroyBuffer(device, buffer, NULL);
+	vkFreeMemory(device, mem, NULL);
 // XXX
 	int fence2_fd = -1;
 	VkFenceGetFdInfoKHR getFdInfo2 = {
@@ -799,6 +813,7 @@ void vulkan_create_screen_image(struct buffer *buffer) {
 	screen_image = create_image(width, height, stride, mod, device);
 	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
 	bind_image_memory(device, screen_image, screen_memory);
+
 	commands[0] = record_command_clear(device, command_pool, screen_image);
 
 	VkSubmitInfo submitInfo = {
