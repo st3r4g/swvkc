@@ -12,6 +12,7 @@
 #include <extensions/xdg_shell/xdg_wm_base.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
 #include <extensions/fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.h>
+#include <extensions/server-decoration/org_kde_kwin_server_decoration_manager.h>
 #include <util/box.h>
 #include <util/log.h>
 #include <util/util.h>
@@ -21,6 +22,7 @@
 #include <xdg-shell-server-protocol.h>
 #include <linux-dmabuf-unstable-v1-server-protocol.h>
 #include <fullscreen-shell-unstable-v1-server-protocol.h>
+#include <server-decoration-server-protocol.h>
 
 #include <linux/input-event-codes.h>
 
@@ -416,6 +418,13 @@ version, uint32_t id) {
 	zwp_fullscreen_shell_v1_new(resource);
 }
 
+static void org_kde_kwin_server_decoration_manager_bind(struct wl_client
+*client, void *data, uint32_t version, uint32_t id) {
+	struct wl_resource *resource = wl_resource_create(client,
+	&org_kde_kwin_server_decoration_manager_interface, version, id);
+	org_kde_kwin_server_decoration_manager_new(resource);
+}
+
 // For debugging
 static bool global_filter(const struct wl_client *client, const struct wl_global
 *global, void *data) {
@@ -467,6 +476,8 @@ int main(int argc, char *argv[]) {
 		 zwp_linux_dmabuf_v1_bind);
 	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
 	zwp_fullscreen_shell_v1_bind);
+	wl_global_create(D, &org_kde_kwin_server_decoration_manager_interface,
+	1, NULL, org_kde_kwin_server_decoration_manager_bind);
 
 	wl_display_set_global_filter(D, global_filter, 0);
 

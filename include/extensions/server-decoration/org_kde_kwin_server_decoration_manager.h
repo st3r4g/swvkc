@@ -1,0 +1,1 @@
+void org_kde_kwin_server_decoration_manager_new(struct wl_resource *resource);
