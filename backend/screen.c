@@ -75,7 +75,8 @@ struct screen {
 	struct props props;
 
 	struct bufmgr *bufmgr;
-	struct fb *fb; // The main framebuffer
+	struct fb *back; // The main framebuffer -- back
+	struct fb *front; // The main framebuffer -- front
 
 	struct wl_list fb_destroy_list;
 
@@ -102,7 +103,9 @@ unsigned int, void*, bool), void *user_data, bool dmabuf_mod) {
 	drm_setup(screen);
 	screen->bufmgr = bufmgr_create(screen->gpu_fd);
 	struct box screen_size = screen_get_dimensions(screen);
-	screen->fb = screen_fb_create_main(screen, screen_size.width,
+	screen->back = screen_fb_create_main(screen, screen_size.width,
+	 screen_size.height, !dmabuf_mod);
+	screen->front = screen_fb_create_main(screen, screen_size.width,
 	 screen_size.height, !dmabuf_mod);
 
 	return screen;
@@ -344,24 +347,26 @@ void screen_atomic_test(struct screen *S) {
 }
 
 int screen_atomic_commit(struct screen *self) {
-	int out_fence_fd = -1;
+	int ret;
+//	int out_fence_fd = -1;
 
 	assert(self->req);
 
-	drmModeAtomicAddProperty(self->req, self->crtc_id,
-	self->props.crtc.out_fence_ptr, (uint64_t)&out_fence_fd);
+//	drmModeAtomicAddProperty(self->req, self->crtc_id,
+//	self->props.crtc.out_fence_ptr, (uint64_t)&out_fence_fd);
 
-	if (drmModeAtomicCommit(self->gpu_fd, self->req,
-	DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, self))
+	ret = drmModeAtomicCommit(self->gpu_fd, self->req,
+	DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, self);
+	if (ret)
 		perror("drmModeAtomicCommit");
 
 	drmModeAtomicFree(self->req);
 	self->req = NULL;
 
-	if (out_fence_fd >= 0)
+	if (ret == 0)
 		self->pending_page_flip = true;
 
-	return out_fence_fd;
+	return ret;
 }
 
 bool screen_page_flip_is_pending(struct screen *self) {
@@ -402,6 +407,11 @@ uint32_t height) {
 }
 
 void screen_main(struct screen *S) {
+// Swap buffers TODO improve
+	struct fb *tmp = S->back;
+	S->back = S->front;
+	S->front = tmp;
+
 	assert(!S->req);
 
 	S->req = drmModeAtomicAlloc();
@@ -409,7 +419,7 @@ void screen_main(struct screen *S) {
 		fprintf(stderr, "atomic allocation failed\n");
 
 	if (drmModeAtomicAddProperty(S->req, S->plane_id,
-	S->props_plane_fb_id, S->fb->id) < 0)
+	S->props_plane_fb_id, S->front->id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
 }
 
@@ -429,8 +439,12 @@ struct gbm_device *screen_get_gbm_device(struct screen *screen) {
 	return bufmgr_get_gbm_device(screen->bufmgr);
 }
 
-struct buffer *screen_get_fb_buffer(struct screen *screen) {
-	return screen->fb->buffer;
+struct buffer *screen_get_back_buffer(struct screen *screen) {
+	return screen->back->buffer;
+}
+
+struct buffer *screen_get_front_buffer(struct screen *screen) {
+	return screen->front->buffer;
 }
 
 bool screen_is_overlay_supported(struct screen *S) {
@@ -524,7 +538,8 @@ void screen_release(struct screen *S) {
 		free(fb_node);
 	}
 
-	screen_fb_destroy(S, S->fb);
+	screen_fb_destroy(S, S->back);
+	screen_fb_destroy(S, S->front);
 	bufmgr_destroy(S->bufmgr);
 	close(S->gpu_fd);
 	free(S);

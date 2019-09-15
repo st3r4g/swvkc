@@ -375,6 +375,22 @@ VkCommandBuffer record_command_clear(VkDevice dev, VkCommandPool pool, VkImage i
 	vkBeginCommandBuffer(cmdbuf, &infoBegin);
 
 	VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+	VkImageMemoryBarrier membar = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+		.pNext = NULL,
+		.srcAccessMask = 0,
+		.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+		.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.image = img,
+		.subresourceRange = range
+	};
+	vkCmdPipelineBarrier(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+	 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &membar);
+
 //	VkClearColorValue color = {{0.8984375f, 0.8984375f, 0.9765625f, 1.0f}};
 	VkClearColorValue color = {{0.0f, 0.0f, 0.0f, 1.0f}}; // wow boring
 	vkCmdClearColorImage(cmdbuf, img,
@@ -543,8 +559,7 @@ VkDevice device;
 VkQueue queue;
 VkCommandPool command_pool;
 VkCommandBuffer commands[2] = {0,0};
-VkImage screen_image;
-VkFence screen_fence;
+VkImage screen_image[2];
 
 
 int vulkan_init(bool *dmabuf, bool *dmabuf_mod) {
@@ -637,7 +652,7 @@ uint32_t format, uint8_t *data) {
 	vkUnmapMemory(device, mem);
 
 	commands[1] = record_command_copy3(device, command_pool, buffer,
-	screen_image, width, height);
+	screen_image[0], width, height);
 	VkSubmitInfo submitInfo = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.commandBufferCount = 1,
@@ -650,10 +665,15 @@ uint32_t format, uint8_t *data) {
 	vkCreateFence(device, &info, NULL, &fence);
 	vkQueueSubmit(queue, 1, &submitInfo, fence);
 	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-	vkResetFences(device, 1, &fence);
+	vkDestroyFence(device, fence, NULL);
 
 	vkDestroyBuffer(device, buffer, NULL);
 	vkFreeMemory(device, mem, NULL);
+
+// Swap buffers TODO improve
+	VkImage tmp = screen_image[0];
+	screen_image[0] = screen_image[1];
+	screen_image[1] = tmp;
 }
 
 int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) {
@@ -666,7 +686,7 @@ int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) 
 	bind_image_memory(device, image, memory);
 
 		commands[1] = record_command_copy(device, command_pool, image,
-		screen_image, width, height);
+		screen_image[0], width, height);
 
 	VkSubmitInfo submitInfo = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -696,23 +716,25 @@ int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) 
 	return EXIT_SUCCESS;
 }
 
-void vulkan_create_screen_image(struct buffer *buffer) {
-	int fd = buffer_get_fd(buffer);
-	uint32_t width = buffer_get_width(buffer);
-	uint32_t height = buffer_get_height(buffer);
-	uint32_t stride = buffer_get_stride(buffer, 0);
-	uint64_t mod = buffer_get_modifier(buffer);
-	screen_image = create_image(width, height, stride, mod, device);
+void vulkan_create_screen_image(struct buffer *back, struct buffer *front) {
+	struct buffer *buffer[2] = {back, front};
+	for (int i=0; i<2; i++) {
+	int fd = buffer_get_fd(buffer[i]);
+	uint32_t width = buffer_get_width(buffer[i]);
+	uint32_t height = buffer_get_height(buffer[i]);
+	uint32_t stride = buffer_get_stride(buffer[i], 0);
+	uint64_t mod = buffer_get_modifier(buffer[i]);
+	screen_image[i] = create_image(width, height, stride, mod, device);
 	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
-	bind_image_memory(device, screen_image, screen_memory);
-	commands[0] = record_command_clear(device, command_pool, screen_image);
+	bind_image_memory(device, screen_image[i], screen_memory);
+	commands[0] = record_command_clear(device, command_pool, screen_image[i]);
 
 	VkSubmitInfo submitInfo = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.commandBufferCount = 1,
 		.pCommandBuffers = commands
 	};
-	VkFenceCreateInfo info = {
+/*	VkFenceCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
 	};
 	vkCreateFence(device, &info, NULL, &screen_fence);
@@ -725,7 +747,8 @@ void vulkan_create_screen_image(struct buffer *buffer) {
 		.handleType = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT
 	};
 
-	vkGetFenceFd(device, &getFdInfo, &fence_fd);
-	vkQueueSubmit(queue, 1, &submitInfo, screen_fence);
+	vkGetFenceFd(device, &getFdInfo, &fence_fd);*/
+	vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+	}
 //	vkResetFences(device, 1, &fence);
 }

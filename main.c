@@ -444,7 +444,8 @@ int main(int argc, char *argv[]) {
 	if (!server->screen)
 		return EXIT_FAILURE;
 
-	vulkan_create_screen_image(screen_get_fb_buffer(server->screen));
+	vulkan_create_screen_image(screen_get_back_buffer(server->screen),
+	                           screen_get_front_buffer(server->screen));
 
 	server->display = wl_display_create();
 	struct wl_display *D = server->display;
