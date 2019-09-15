@@ -30,6 +30,7 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <time.h>
 
 struct server {
 	struct wl_display *display;
@@ -56,7 +57,7 @@ struct bufres_node {
 	struct wl_list link;
 };
 
-int my_out_fence_fd = -1;
+int my_out_fence_fd[2] = {-1, -1};
 
 static int out_fence_handler(int fd, uint32_t mask, void *data);
 
@@ -104,7 +105,10 @@ void shmbuf(struct wl_resource *buffer, struct screen *screen, int *in_fence) {
 	uint32_t format = wl_shm_buffer_get_format(shm_buffer);
 	uint8_t *data = wl_shm_buffer_get_data(shm_buffer);
 	wl_shm_buffer_begin_access(shm_buffer);
-	*in_fence = vulkan_render_shm_buffer(width, height, stride, format, data, my_out_fence_fd);
+	// pass the "old" out_fence
+	vulkan_render_shm_buffer(width, height, stride, format, data, my_out_fence_fd[1]);
+	// the "new" out_fence becomes the "old"
+	my_out_fence_fd[1] = my_out_fence_fd[0];
 	wl_shm_buffer_end_access(shm_buffer);
 	wl_buffer_send_release(buffer);
 }
@@ -194,7 +198,8 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 
 		errlog("presented to screen");
 
-		my_out_fence_fd = dup(out_fence_fd); // XXX
+		// save the "new out_fence"
+		my_out_fence_fd[0] = dup(out_fence_fd);
 
 		struct wl_event_loop *el =
 		 wl_display_get_event_loop(server->display);
@@ -299,9 +304,37 @@ tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 			surface->frame = 0;
 		}
 	}
+/*
+ * Scanout has ended, tell Vulkan to start rendering
+ */
+	struct timespec req, rem;
+	req.tv_sec = 0;
+	req.tv_nsec = 10000000;
+	nanosleep(&req, &rem);
+	bool flag = vulkan_start_rendering();
+	if (flag) {
+/*		int out_fence_fd = screen_atomic_commit(server->screen);
+		if (out_fence_fd < 0)
+			return;
+
+		errlog("presented to screen");
+
+		// save the "new out_fence"
+		my_out_fence_fd[0] = dup(out_fence_fd);
+
+		struct wl_event_loop *el =
+		 wl_display_get_event_loop(server->display);
+		server->event = wl_event_loop_add_fd(el, out_fence_fd,
+		 WL_EVENT_READABLE, out_fence_handler, server);
+		if (!server->event) // was NULL once (kitty)
+			errlog("wl_event_loop_add_fd failed (fd %d)", out_fence_fd);
+	errlog("VBLANK committed");*/
+	}
+
 }
 
 static int out_fence_handler(int fd, uint32_t mask, void *data) {
+	errlog("out_fence_handler");
 	struct server *server = data;
 //	errlog("SCANOUT COMPLETED");
 //	if (server->event)
@@ -498,7 +531,7 @@ int main(int argc, char *argv[]) {
 	if (!server->input)
 		return EXIT_FAILURE;
 	
-	legacy_wl_drm_setup(D, screen_get_gpu_fd(server->screen));
+//	legacy_wl_drm_setup(D, screen_get_gpu_fd(server->screen));
 
 	struct wl_event_loop *el = wl_display_get_event_loop(D);
 	wl_event_loop_add_fd(el, screen_get_gpu_fd(server->screen),

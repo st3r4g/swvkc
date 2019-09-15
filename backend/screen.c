@@ -420,11 +420,11 @@ void screen_main(struct screen *S, int in_fence) {
 	S->props_plane_fb_id, S->fb->id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
 
-	errlog("in_fence: %d", in_fence);
+/*	errlog("in_fence: %d", in_fence);
 	if (drmModeAtomicAddProperty(S->req, S->plane_id,
 	S->props.plane.in_fence_fd, in_fence) < 0)
 		fprintf(stderr, "atomic add property failed\n");
-	iffdtc[iffdtcn++] = in_fence;
+	iffdtc[iffdtcn++] = in_fence;*/
 }
 
 int screen_get_gpu_fd(struct screen *S) {

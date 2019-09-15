@@ -40,6 +40,9 @@ struct bufmgr *bufmgr_create(int drm_fd) {
 		fprintf(stderr, "drm_intel_bufmgr_gem_init failed\n");
 		return NULL;
 	}
+	
+	printf("can disable implicit sync? %d\n",
+	 drm_intel_bufmgr_gem_can_disable_implicit_sync(self->bufmgr));
 	return self;
 }
 
@@ -61,6 +64,8 @@ bool linear) {
 	}
 	printf("intel_bufmgr: allocated %dx%d, stride: %lu\n", width, height,
 	 stride);
+	
+	drm_intel_gem_bo_disable_implicit_sync(bo);
 	
 	struct buffer *buffer = malloc(sizeof(struct buffer));
 	buffer->width = width;

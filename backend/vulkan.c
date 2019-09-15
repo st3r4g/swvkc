@@ -286,13 +286,13 @@ VkImage create_image(int32_t width, int32_t height, uint32_t stride, uint64_t mo
 		fprintf(stderr, "ERROR: create_image() failed.\n");
 		return VK_NULL_HANDLE;
 	}
-	VkImageSubresource subresource = {
+/*	VkImageSubresource subresource = {
 		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 		.mipLevel = 0,
 		.arrayLayer = 0
 	};
 	vkGetImageSubresourceLayout(dev, img, &subresource, &layout);
-	errlog("Vulkan stride: %d", layout.rowPitch);
+	errlog("Vulkan stride: %d", layout.rowPitch);*/
 	return img;
 }
 
@@ -529,6 +529,7 @@ buf, VkBuffer buf2) {
 	return cmdbuf;
 }
 
+VkEvent event = VK_NULL_HANDLE;
 VkCommandBuffer record_command_copy3(VkDevice dev, VkCommandPool pool, VkBuffer
 buf, VkImage img2, uint32_t width, uint32_t height) {
 	VkCommandBufferAllocateInfo info = {
@@ -545,6 +546,12 @@ buf, VkImage img2, uint32_t width, uint32_t height) {
 		.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
 	};
 	vkBeginCommandBuffer(cmdbuf, &infoBegin);
+
+	VkEventCreateInfo eventCreate = {
+		.sType = VK_STRUCTURE_TYPE_EVENT_CREATE_INFO,
+	};
+	vkCreateEvent(dev, &eventCreate, NULL, &event);
+	vkCmdWaitEvents(cmdbuf, 1, &event, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, NULL, 0, NULL, 0, NULL);
 
 	VkImageSubresourceLayers imageSubresource = {
 		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -568,8 +575,6 @@ buf, VkImage img2, uint32_t width, uint32_t height) {
 	return cmdbuf;
 }
 
-
-
 VkPhysicalDevice physical_device;
 VkDevice device;
 VkQueue queue;
@@ -577,6 +582,16 @@ VkCommandPool command_pool;
 VkCommandBuffer commands[2] = {0,0};
 VkImage screen_image;
 VkFence screen_fence;
+
+bool vulkan_start_rendering() {
+	bool condition = event != VK_NULL_HANDLE;
+	if (condition) {
+		vkSetEvent(device, event);
+		vkDestroyEvent(device, event, NULL);
+		event = VK_NULL_HANDLE;
+	}
+	return condition;
+}
 
 
 int vulkan_init(bool *dmabuf, bool *dmabuf_mod) {
@@ -658,9 +673,21 @@ VkBuffer create_buffer(uint32_t size, VkDeviceMemory *mem, VkDevice dev) {
 	return buf;
 }
 
-int vulkan_render_shm_buffer(uint32_t width, uint32_t height, uint32_t stride,
+void vulkan_render_shm_buffer(uint32_t width, uint32_t height, uint32_t stride,
 uint32_t format, uint8_t *data, int out_fence_fd) {
-	int semaphore_count = out_fence_fd < 0 ? 0 : 1;
+	static VkFence fence = VK_NULL_HANDLE;
+	static VkDeviceMemory mem = VK_NULL_HANDLE;
+	static VkBuffer buffer = VK_NULL_HANDLE;
+
+	if (fence != VK_NULL_HANDLE) {
+		vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+		vkDestroyFence(device, fence, NULL);
+		vkDestroyBuffer(device, buffer, NULL);
+		vkFreeMemory(device, mem, NULL);
+	}
+
+
+/*	int semaphore_count = out_fence_fd < 0 ? 0 : 1;
 // XXX
 	VkSemaphore semaphore, signal_sem;
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {
@@ -694,10 +721,9 @@ uint32_t format, uint8_t *data, int out_fence_fd) {
 		fprintf(stderr, "ERROR: vkImportSemaphoreFd failed.\n");
 	}
 //	close(out_fence_fd); //TODO: remove probably, should already be closed on successful import
-// XXX
+// XXX*/
 	uint32_t buffer_size = stride*height;
-	VkDeviceMemory mem;
-	VkBuffer buffer = create_buffer(buffer_size, &mem, device);
+	buffer = create_buffer(buffer_size, &mem, device);
 	void *dest;
 	vkMapMemory(device, mem, 0, buffer_size, 0, &dest);
 	memcpy(dest, data, (size_t) buffer_size); // takes several ms
@@ -705,34 +731,30 @@ uint32_t format, uint8_t *data, int out_fence_fd) {
 
 	commands[1] = record_command_copy3(device, command_pool, buffer,
 	screen_image, width, height);
-	VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
+//	VkPipelineStageFlags flags = VK_PIPELINE_STAGE_TRANSFER_BIT;
 	VkSubmitInfo submitInfo = {
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &semaphore,
-		.pWaitDstStageMask = &flags,
+		.waitSemaphoreCount = 0,
+		.pWaitSemaphores = NULL,
+		.pWaitDstStageMask = 0,
 		.commandBufferCount = 1,
 		.pCommandBuffers = commands+1,
-		.signalSemaphoreCount = 1,
-		.pSignalSemaphores = &signal_sem
+		.signalSemaphoreCount = 0,
+		.pSignalSemaphores = NULL
 	};
-	VkFence fence;
-	VkExportFenceCreateInfo ooo = {
+/*	VkExportFenceCreateInfo ooo = {
 		.sType = VK_STRUCTURE_TYPE_EXPORT_FENCE_CREATE_INFO,
 		.pNext = NULL,
 		.handleTypes = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT
-	};
+	};*/
 	VkFenceCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-		.pNext = &ooo,
+		.pNext = NULL,
 		.flags = 0
 	};
 	vkCreateFence(device, &info, NULL, &fence);
 	vkQueueSubmit(queue, 1, &submitInfo, fence);
-	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX); // XXX: remove this wait (~1ms)
-
-	vkDestroyBuffer(device, buffer, NULL);
-	vkFreeMemory(device, mem, NULL);
+/*
 // XXX
 	int fence2_fd = -1;
 	VkFenceGetFdInfoKHR getFdInfo2 = {
@@ -761,7 +783,7 @@ uint32_t format, uint8_t *data, int out_fence_fd) {
 
 	close(fence_fd);
 	return fence2_fd; // choose which fence to return
-// XXX
+// XXX*/
 }
 
 int vulkan_main(int i, int fd, int width, int height, int stride, uint64_t mod) {
