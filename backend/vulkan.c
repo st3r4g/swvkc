@@ -661,7 +661,7 @@ uint32_t format, uint8_t *data) {
 	VkFence fence;
 	VkFenceCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
-		};
+	};
 	vkCreateFence(device, &info, NULL, &fence);
 	vkQueueSubmit(queue, 1, &submitInfo, fence);
 	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
@@ -669,6 +669,7 @@ uint32_t format, uint8_t *data) {
 
 	vkDestroyBuffer(device, buffer, NULL);
 	vkFreeMemory(device, mem, NULL);
+	vkFreeCommandBuffers(device, command_pool, 1, commands+1);
 
 // Swap buffers TODO improve
 	VkImage tmp = screen_image[0];
