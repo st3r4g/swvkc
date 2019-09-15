@@ -41,8 +41,6 @@ struct server {
  */
 	struct wl_list mapped_surfaces_list;
 	struct wl_list bufres_list; // Buffers that have been scanout
-
-	struct wl_event_source *event;
 };
 
 struct surface_node {
@@ -55,8 +53,6 @@ struct bufres_node {
 	struct wl_resource *bufres;
 	struct wl_list link;
 };
-
-static int out_fence_handler(int fd, uint32_t mask, void *data);
 
 struct surface *focused_surface(struct server *server) {
 	struct surface_node *node;
@@ -185,16 +181,7 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 			screen_main(screen);
 		}
 
-		int out_fence_fd = screen_atomic_commit(screen);
-		if (out_fence_fd < 0)
-			return;
-
-		struct wl_event_loop *el =
-		 wl_display_get_event_loop(server->display);
-		server->event = wl_event_loop_add_fd(el, out_fence_fd,
-		 WL_EVENT_READABLE, out_fence_handler, server);
-		if (!server->event) // was NULL once (kitty)
-			errlog("wl_event_loop_add_fd failed (fd %d)", out_fence_fd);
+		screen_atomic_commit(screen);
 	}
 }
 
@@ -232,6 +219,7 @@ void buffer_dmabuf_destroy_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 /*	void *image = dmabuf->subsystem_object[SUBSYSTEM_VULKAN];
 	renderer_image_destroy(server->renderer, image); */
 
+// XXX: ugly
 	struct bufres_node *node;
 	wl_list_for_each(node, &server->bufres_list, link)
 		if (wl_resource_get_user_data(node->bufres) == dmabuf) {
@@ -292,15 +280,12 @@ tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 			surface->frame = 0;
 		}
 	}
-}
-
-static int out_fence_handler(int fd, uint32_t mask, void *data) {
-	struct server *server = data;
-//	errlog("SCANOUT COMPLETED");
-//	if (server->event)
-		wl_event_source_remove(server->event); // sometimes fails with mpv (?)
-	close(fd);
-
+/*
+ * If a dmabuf has been scanned out directly, the VBI (now) is the right time to
+ * release it.
+ * TODO: Find a better solution to avoid releasing a destroyed buffer by design
+ *       without having to check each dmabuf buffer destruction.
+ */
 	if (wl_list_length(&server->bufres_list) > 1) {
 		struct bufres_node *node;
 		node = wl_container_of(server->bufres_list.prev, node, link);
@@ -308,8 +293,6 @@ static int out_fence_handler(int fd, uint32_t mask, void *data) {
 		wl_list_remove(&node->link);
 		free(node);
 	}
-
-	return 0;
 }
 
 static int gpu_ev_handler(int fd, uint32_t mask, void *data) {
