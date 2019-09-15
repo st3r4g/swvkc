@@ -9,6 +9,7 @@
 #include <core/seat.h>
 #include <core/keyboard.h>
 #include <core/wl_subcompositor.h>
+#include <core/subsurface.h>
 #include <extensions/xdg_shell/xdg_wm_base.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
 #include <extensions/fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.h>
@@ -47,6 +48,7 @@ struct server {
 
 struct surface_node {
 	struct surface *surface;
+	struct surface *child; // XXX: temporary
 	struct wl_resource *keyboard;
 	struct wl_list link;
 };
@@ -59,7 +61,7 @@ struct bufres_node {
 struct surface *focused_surface(struct server *server) {
 	struct surface_node *node;
 	node = wl_container_of(server->mapped_surfaces_list.next, node, link);
-	return node->surface;
+	return node->child ? node->child : node->surface; // XXX: temporary
 }
 
 struct wl_resource *focused_surface_keyboard(struct server *server) {
@@ -111,10 +113,23 @@ void shmbuf(struct wl_resource *buffer) {
 
 void surface_map_notify(struct surface *surface, void *user_data) {
 	struct server *server = user_data;
+
+	if (surface->role == ROLE_SUBSURFACE) {
+		struct subsurface *subsurface = surface->role_object;
+		struct surface *parent = wl_resource_get_user_data(subsurface->current->parent);
+		struct surface_node *node;
+		wl_list_for_each(node, &server->mapped_surfaces_list, link)
+			if (node->surface == parent) {
+				node->child = surface;
+				break;
+			}
+		return;
+	}
+
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct surface *old = focused_surface(server);
 		struct wl_resource *keyboard = focused_surface_keyboard(server);
-		if (keyboard && surface->role != ROLE_SUBSURFACE)
+		if (keyboard)
 			wl_keyboard_send_leave(keyboard, 0, old->resource);
 	}
 	errlog("A surface has been mapped");
@@ -124,17 +139,31 @@ void surface_map_notify(struct surface *surface, void *user_data) {
 	struct wl_client *client = wl_resource_get_client(surface->resource);
 	struct wl_resource *keyboard = NULL;
 	keyboard = util_wl_client_get_keyboard(client);
-	if (keyboard && surface->role != ROLE_SUBSURFACE)
+	if (keyboard)
 		wl_keyboard_send_enter(keyboard, 0, surface->resource, &array);
 
 	struct surface_node *node = malloc(sizeof(struct surface_node));
 	node->surface = surface;
+	node->child = NULL;
 	node->keyboard = keyboard;
 	wl_list_insert(&server->mapped_surfaces_list, &node->link);
 }
 
 void surface_unmap_notify(struct surface *surface, void *user_data) {
 	struct server *server = user_data;
+
+	if (surface->role == ROLE_SUBSURFACE) {
+		struct subsurface *subsurface = surface->role_object;
+		struct surface *parent = wl_resource_get_user_data(subsurface->current->parent);
+		struct surface_node *node;
+		wl_list_for_each(node, &server->mapped_surfaces_list, link)
+			if (node->surface == parent) {
+				node->child = NULL;
+				break;
+			}
+		return;
+	}
+
 	errlog("A surface has been unmapped");
 	/*
 	 * Is there a way to remove it without going through the list?
@@ -150,7 +179,7 @@ void surface_unmap_notify(struct surface *surface, void *user_data) {
 		wl_array_init(&array); //Need the currently pressed keys
 		struct surface *new = focused_surface(server);
 		struct wl_resource *keyboard = focused_surface_keyboard(server);
-		if (keyboard && new->role != ROLE_SUBSURFACE)
+		if (keyboard)
 			wl_keyboard_send_enter(keyboard, 0, new->resource, &array);
 	}
 }
