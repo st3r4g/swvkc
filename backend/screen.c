@@ -477,6 +477,7 @@ struct fb *screen_fb_create(struct screen *screen, struct buffer *buffer) {
 	if (drmModeAddFB2WithModifiers(screen->gpu_fd, width, height, format,
 	 handles, strides, offsets, modifier, &buf_id, DRM_MODE_FB_MODIFIERS)) {
 		perror("drmModeAddFB2WithModifiers");
+		abort();
 		return NULL;
 	}
 

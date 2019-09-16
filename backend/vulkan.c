@@ -259,7 +259,7 @@ VkImage create_image(int32_t width, int32_t height, uint32_t stride, uint64_t mo
 		.arrayLayers = 1,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.tiling = tiling,
-		.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT, // or SRC
+		.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 //		.queueFamilyIndexCount = 0, ignored
 //		.pQueueFamilyIndices = 0, ignored
@@ -725,7 +725,20 @@ void vulkan_create_screen_image(struct buffer *back, struct buffer *front) {
 	uint32_t height = buffer_get_height(buffer[i]);
 	uint32_t stride = buffer_get_stride(buffer[i], 0);
 	uint64_t mod = buffer_get_modifier(buffer[i]);
+
 	screen_image[i] = create_image(width, height, stride, mod, device);
+
+/*	VkMemoryRequirements2 memreq2; XXX: useless stuff
+	VkImageMemoryRequirementsInfo2 info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2,
+		.pNext = NULL,
+		.image = screen_image[i]
+	};
+	vkGetImageMemoryRequirements2(device, &info, &memreq2);
+	VkMemoryRequirements memreq;
+	vkGetImageMemoryRequirements(device, screen_image[i], &memreq);
+
+	errlog("MEMREQ.size: %d, real size: %d", memreq.size, stride*height);*/
 	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
 	bind_image_memory(device, screen_image[i], screen_memory);
 	commands[0] = record_command_clear(device, command_pool, screen_image[i]);

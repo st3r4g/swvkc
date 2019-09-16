@@ -1,5 +1,5 @@
-project('swvkc', 'c', default_options : ['c_std=c11', 'warning_level=3',
-'werror=true'])
+project('swvkc', 'c', version: 'pre-alpha', default_options : ['c_std=c11',
+'warning_level=3', 'werror=true'])
 add_project_arguments('-pedantic-errors', '-Wno-unused-parameter',
 '-Wno-unused-function', language : 'c')
 add_project_link_arguments('-lm', language : 'c')
@@ -9,7 +9,9 @@ c = 'core/'
 u = 'util/'
 x = 'extensions/'
 
-src = [b+'bufmgr_gbm.c', b+'input.c', b+'screen.c', b+'vulkan.c']
+bufmgr = get_option('bufmgr')
+
+src = [b+'bufmgr_'+bufmgr+'.c', b+'input.c', b+'screen.c', b+'vulkan.c']
 src += [c+'compositor.c', c+'data_device_manager.c', c+'keyboard.c',
 	c+'output.c', c+'wl_pointer.c', c+'region.c', c+'seat.c',
 	c+'wl_subcompositor.c', c+'subsurface.c', c+'wl_surface.c']
@@ -76,14 +78,25 @@ gen += custom_target(
 
 dep = [wayland_protocols]
 dep += dependency('wayland-server')
-dep += dependency('vulkan')
 dep += dependency('libdrm')
+dep += dependency('libdrm_intel', required : bufmgr == 'intel')
+dep += dependency('vulkan')
 dep += dependency('xkbcommon')
 dep += dependency('libudev')
+dep += dependency('gbm') # required for legacy wl_drm
 dep += dependency('egl') # required for legacy wl_drm
-dep += dependency('gbm') # required for legacy wl_drm and for bufmgr_gbm
-#dep += dependency('libdrm_intel') # required for bufmgr_intel
 
 inc = include_directories('include')
 
 executable('swvkc', [src, gen], dependencies : dep, include_directories : inc, install : true)
+
+summary = [
+	'',
+	'----------------',
+	'swvkc @0@'.format(meson.project_version()),
+	'',
+	' bufmgr (buffer manager): @0@'.format(bufmgr),
+	'----------------',
+	''
+]
+message('\n'.join(summary))

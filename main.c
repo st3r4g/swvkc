@@ -488,6 +488,7 @@ int main(int argc, char *argv[]) {
 	server->display = wl_display_create();
 	struct wl_display *D = server->display;
 	setenv("WAYLAND_DISPLAY", wl_display_add_socket_auto(D), 0);
+	setenv("QT_QPA_PLATFORM", "wayland-egl", 0);
 
 	wl_global_create(D, &wl_compositor_interface, 4, server,
 	compositor_bind);
