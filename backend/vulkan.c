@@ -35,14 +35,12 @@ static int compare_ext_names(const void *a_, const void *b_) {
 }
 
 static int is_ext_name(const void *a_, const void *b_) {
-	// swap the arguments?
-	const VkExtensionProperties *a = a_;
-	const char *b = b_;
-	return strcmp(a->extensionName, b);
+	const char *a = a_;
+	const VkExtensionProperties *b = b_;
+	return strcmp(a, b->extensionName);
 }
 
 bool check_ext(int n_ext, VkExtensionProperties *ext_p, const char *ext_req) {
-	qsort(ext_p, n_ext, sizeof(VkExtensionProperties), compare_ext_names);
 	void *found = bsearch(ext_req, ext_p, n_ext,
 	                    sizeof(VkExtensionProperties), is_ext_name);
 	bool ret = found != 0;
@@ -56,6 +54,7 @@ VkInstance create_instance(bool *dmabuf, bool *dmabuf_mod) {
 	vkEnumerateInstanceExtensionProperties(NULL, &n_ext, NULL);
 	VkExtensionProperties *ext_p = malloc(n_ext*sizeof(*ext_p));
 	vkEnumerateInstanceExtensionProperties(NULL, &n_ext, ext_p);
+	qsort(ext_p, n_ext, sizeof(VkExtensionProperties), compare_ext_names);
 
 	check_ext(n_ext, ext_p, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 	*dmabuf = check_ext(n_ext, ext_p, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
@@ -143,6 +142,7 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 	vkEnumerateDeviceExtensionProperties(pdev, NULL, &n_ext, NULL);
 	VkExtensionProperties *ext_p = malloc(n_ext*sizeof(*ext_p));
 	vkEnumerateDeviceExtensionProperties(pdev, NULL, &n_ext, ext_p);
+	qsort(ext_p, n_ext, sizeof(VkExtensionProperties), compare_ext_names);
 
 	*dmabuf = check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
