@@ -4,6 +4,7 @@
 #include <wayland-util.h> // just for wl_list
 
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -100,7 +101,11 @@ unsigned int, void*, bool), void *user_data, bool dmabuf_mod) {
 	wl_list_init(&screen->fb_destroy_list);
 	screen->vblank_notify = vblank_notify;
 	screen->user_data = user_data;
-	drm_setup(screen);
+
+	if (drm_setup(screen) < 0) {
+		return NULL;
+	}
+
 	screen->bufmgr = bufmgr_create(screen->gpu_fd);
 	struct box screen_size = screen_get_dimensions(screen);
 	screen->back = screen_fb_create_main(screen, screen_size.width,
@@ -225,10 +230,10 @@ void request_vblank(struct screen *screen) {
 
 int drm_setup(struct screen *S) {
 	char *devpath = boot_gpu_devpath();
-	S->gpu_fd = open(devpath, O_RDWR|O_CLOEXEC|O_NOCTTY|O_NONBLOCK);
+	S->gpu_fd = open(devpath, O_RDWR | O_CLOEXEC);
 	if (S->gpu_fd < 0) {
-		perror("open /dev/dri/card0");
-		return 1;
+		fprintf(stderr, "open %s: %s\n", devpath, strerror(errno));
+		return -1;
 	}
 	free(devpath);
 
@@ -239,7 +244,7 @@ int drm_setup(struct screen *S) {
 
 	if(drmSetClientCap(S->gpu_fd, DRM_CLIENT_CAP_ATOMIC, 1)) {
 		fprintf(stderr, "ATOMIC MODESETTING UNSUPPORTED :C\n");
-		return 1;
+		return -1;
 	}
 	
 	drmModeRes *res = drmModeGetResources(S->gpu_fd);

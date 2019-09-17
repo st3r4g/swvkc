@@ -27,6 +27,7 @@
 
 #include <linux/input-event-codes.h>
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -479,15 +480,24 @@ int main(int argc, char *argv[]) {
 	errlog("swvkc DMABUF with MODIFIERS support: %s", words[dmabuf_mod]);
 
 	server->screen = screen_setup(vblank_notify, server, dmabuf_mod);
-	if (!server->screen)
+	if (!server->screen) {
+		errlog("Could not setup screen");
 		return EXIT_FAILURE;
+	}
 
 	vulkan_create_screen_image(screen_get_back_buffer(server->screen),
 	                           screen_get_front_buffer(server->screen));
 
 	server->display = wl_display_create();
 	struct wl_display *D = server->display;
-	setenv("WAYLAND_DISPLAY", wl_display_add_socket_auto(D), 0);
+
+	const char *socket = wl_display_add_socket_auto(D);
+	if (socket == NULL) {
+		errlog("Could not create socket");
+		return EXIT_FAILURE;
+	}
+
+	setenv("WAYLAND_DISPLAY", socket, 0);
 	setenv("QT_QPA_PLATFORM", "wayland-egl", 0);
 
 	wl_global_create(D, &wl_compositor_interface, 4, server,
@@ -513,8 +523,10 @@ int main(int argc, char *argv[]) {
 
 // Can I move at the beginning of the program (still enter key stuck?)
 	server->input = input_setup();
-	if (!server->input)
+	if (!server->input) {
+		errlog("Could not setup input");
 		return EXIT_FAILURE;
+	}
 	
 	legacy_wl_drm_setup(D, screen_get_gpu_fd(server->screen));
 
@@ -525,26 +537,12 @@ int main(int argc, char *argv[]) {
 	WL_EVENT_READABLE, key_ev_handler, server);
 
 	if (argc > 1) {
-		int len = argc+4; // amount of spaces + terminating NULL byte + 'exec '
-		for (int i=1; i<argc; i++) {
-			len += strlen(argv[i]);
-		}
-		char *client_cmd = malloc(len*sizeof(char*));
-		strcpy(client_cmd, "exec ");
-		for (int i=1, offset=5; i<argc; i++) {
-			strcpy(client_cmd+offset, argv[i]);
-			if (i < argc-1) {
-				offset = strlen(client_cmd)+1;
-				client_cmd[offset-1] = ' ';
-			}
-		}
-
-		pid_t pid = fork();
-		if (!pid) {
-			execl("/bin/sh", "/bin/sh", "-c", client_cmd, (char*)NULL);
-			/* If execl returns (i.e. /bin/sh doesn't exist) we are
-			 * in big trouble here
-			 */
+		if (fork() == 0) {
+			execvp(argv[1], argv+1);
+			fprintf(stderr, "execvp %s: %s\n", argv[1], strerror(errno));
+			errlog("Could not start client %s", argv[1]);
+			_exit(0);
+			/* NOTREACHED */
 		}
 	}
 

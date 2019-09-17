@@ -119,9 +119,9 @@ struct input *input_setup() {
 	}
 
 	struct input *S = calloc(1, sizeof(struct input));
-	S->key_fd = open(key_devs[n].devnode, O_RDONLY|O_CLOEXEC|O_NONBLOCK);
+	S->key_fd = open(key_devs[n].devnode, O_RDONLY | O_CLOEXEC);
 	if (S->key_fd < 0) {
-		perror("open");
+		fprintf(stderr, "open %s: %s\n", key_devs[n].devnode, strerror(errno));
 		return 0;
 	}
 	free_keyboard_devices(key_devs, count);
