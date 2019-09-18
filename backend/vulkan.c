@@ -565,19 +565,23 @@ VkImage screen_image[2];
 int vulkan_init(bool *dmabuf, bool *dmabuf_mod) {
 	bool dmabuf_inst, dmabuf_mod_inst;
 	VkInstance instance = create_instance(&dmabuf_inst, &dmabuf_mod_inst);
-	if (instance == VK_NULL_HANDLE)
-		return EXIT_FAILURE;
-	printf("Instance created\n");
+	if (instance == VK_NULL_HANDLE) {
+		errlog("create_instance failed");
+		return -1;
+	}
 
 	physical_device = get_physical_device(instance);
-	if (physical_device == VK_NULL_HANDLE)
-		return EXIT_FAILURE;
-	printf("physical device created\n");
+	if (physical_device == VK_NULL_HANDLE) {
+		errlog("get_physical_device failed");
+		return -1;
+	}
 
 	bool dmabuf_dev, dmabuf_mod_dev;
 	device = create_device(instance, physical_device, &dmabuf_dev, &dmabuf_mod_dev);
-	if (device == VK_NULL_HANDLE)
-		return EXIT_FAILURE;
+	if (device == VK_NULL_HANDLE) {
+		errlog("create_device failed");
+		return -1;
+	}
 
 	*dmabuf = dmabuf_inst && dmabuf_dev;
 	*dmabuf_mod = dmabuf_mod_inst && dmabuf_mod_dev;
@@ -586,10 +590,12 @@ int vulkan_init(bool *dmabuf, bool *dmabuf_mod) {
 	vkGetDeviceQueue(device, 0, 0, &queue);
 
 	command_pool = create_command_pool(device);
-	if (command_pool == VK_NULL_HANDLE)
-		return EXIT_FAILURE;
+	if (command_pool == VK_NULL_HANDLE) {
+		errlog("create_device failed");
+		return -1;
+	}
 
-	return EXIT_SUCCESS;
+	return 0;
 }
 
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {

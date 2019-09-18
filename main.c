@@ -369,7 +369,11 @@ int main(int argc, char *argv[]) {
 	wl_list_init(&server->bufres_list);
 
 	bool dmabuf = false, dmabuf_mod = false;
-	vulkan_init(&dmabuf, &dmabuf_mod);
+	if (vulkan_init(&dmabuf, &dmabuf_mod) < 0) {
+		errlog("Could not setup the renderer (Vulkan)");
+		return EXIT_FAILURE;
+	}
+
 	const char *status[] = {"DISABLED", "enabled"};
 	errlog("swvkc DMABUF support: %s", status[dmabuf]);
 	errlog("swvkc DMABUF with MODIFIERS support: %s", status[dmabuf_mod]);
