@@ -97,6 +97,7 @@ void screen_fb_destroy(struct screen *screen, struct fb *fb);
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
 unsigned int, void*, bool), void *user_data, bool dmabuf_mod) {
+	printf("├─ VIDEO (Direct Rendering Manager)\n");
 	struct screen *screen = calloc(1, sizeof(struct screen));
 	wl_list_init(&screen->fb_destroy_list);
 	screen->vblank_notify = vblank_notify;
@@ -158,10 +159,10 @@ void planes(struct screen *S, uint32_t crtc_id) {
 			obj_props->props[j]);
 			if (!strcmp(prop->name, "type")) {
 				if (obj_props->prop_values[j] == DRM_PLANE_TYPE_PRIMARY) {
-					errlog("am primary %d", plane->plane_id);
+					boxlog("primary %d", plane->plane_id);
 					S->plane_id = plane->plane_id;
 				} else if (obj_props->prop_values[j] == DRM_PLANE_TYPE_OVERLAY) {
-					errlog("am overlay %d", plane->plane_id);
+					boxlog("overlay %d", plane->plane_id);
 					S->overlay_plane_id = plane->plane_id;
 				}
 			}
@@ -249,7 +250,7 @@ int drm_setup(struct screen *S) {
 		n = 0;
 	}
 	drmModeCrtc *crtc = get_crtc_from_conn(S->gpu_fd, connected[n]);
-	errlog("vrefresh: %d, connected: %d\n", crtc->mode.vrefresh,
+	boxlog("vrefresh: %d, connected: %d", crtc->mode.vrefresh,
 	connected[n]->connector_id);
 
 	S->crtc_id = crtc->crtc_id;
@@ -259,7 +260,7 @@ int drm_setup(struct screen *S) {
 	S->props = find_prop_ids(S->gpu_fd, S->plane_id, connected[n]->connector_id, S->crtc_id);
 	S->props_plane_fb_id = S->props.plane.fb_id;
 
-	errlog("%d %d %d", S->plane_id, S->props_plane_fb_id, S->old_fb_id);
+	boxlog("%d %d %d", S->plane_id, S->props_plane_fb_id, S->old_fb_id);
 
 	request_vblank(S);
 	return 0;
@@ -619,4 +620,8 @@ uint32_t get_active_fb(int fd, uint32_t plane_id) {
 	uint32_t fb_id = plane->fb_id;
 	drmModeFreePlane(plane);
 	return fb_id;
+}
+
+const char *screen_get_bufmgr_impl(struct screen *screen) {
+	return bufmgr_get_name(screen->bufmgr);
 }

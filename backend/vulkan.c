@@ -45,7 +45,7 @@ bool check_ext(int n_ext, VkExtensionProperties *ext_p, const char *ext_req) {
 	                    sizeof(VkExtensionProperties), is_ext_name);
 	bool ret = found != 0;
 	const char *words[] = {"is NOT", "is"};
-	errlog("Extension %s %s supported", ext_req, words[ret]);
+	boxlog("Extension %s %s supported", ext_req, words[ret]);
 	return ret;
 }
 
@@ -126,14 +126,54 @@ VkInstance create_instance(bool *dmabuf, bool *dmabuf_mod) {
 	return inst;
 }
 
+const char *type_to_string(enum VkPhysicalDeviceType type) {
+	switch (type) {
+		case VK_PHYSICAL_DEVICE_TYPE_OTHER:
+			return "Other";
+		case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+			return "Integrated GPU";
+		case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+			return "Discrete GPU";
+		case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+			return "Virtual GPU";
+		case VK_PHYSICAL_DEVICE_TYPE_CPU:
+			return "CPU";
+		default:
+			return "no type";
+	}
+}
+
 VkPhysicalDevice get_physical_device(VkInstance inst) {
 	uint32_t n = 1;
 	VkPhysicalDevice pdev;
 	vkEnumeratePhysicalDevices(inst, &n, &pdev);
 	if (n == 0) {
-		fprintf(stderr, "ERROR: get_physical_device() failed.\n");
+		errlog("No physical devices");
 		return VK_NULL_HANDLE;
 	}
+
+/*	struct VkPhysicalDevicePCIBusInfoPropertiesEXT busProps;
+	struct VkPhysicalDeviceProperties2 aa = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+		.pNext = &busProps,
+	}; XXX broken
+	vkGetPhysicalDeviceProperties22(pdev, &aa);*/
+	VkPhysicalDeviceProperties props;
+	vkGetPhysicalDeviceProperties(pdev, &props);
+	boxlog("Device name: %s", props.deviceName);
+	boxlog("       type: %s", type_to_string(props.deviceType));
+/*	errlog("%d %d %d %d", busProps.pciDomain, busProps.pciBus,
+	 busProps.pciDevice, busProps.pciFunction);*/
+/*	errlog("Device API version %d.%d.%d",
+	 VK_VERSION_MAJOR(props.apiVersion),
+	 VK_VERSION_MINOR(props.apiVersion),
+	 VK_VERSION_PATCH(props.apiVersion));
+	errlog("%d", props.driverVersion);
+	errlog("%d", props.vendorID);
+	errlog("%d", props.deviceID);
+	errlog("%s", type_to_string(props.deviceType));
+	errlog("%s", props.deviceName);
+	errlog("%d", props.limits);*/
 	return pdev;
 }
 
@@ -270,13 +310,13 @@ VkImage create_image(int32_t width, int32_t height, uint32_t stride, uint64_t mo
 		fprintf(stderr, "ERROR: create_image() failed.\n");
 		return VK_NULL_HANDLE;
 	}
-	VkImageSubresource subresource = {
+/*	VkImageSubresource subresource = {
 		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 		.mipLevel = 0,
 		.arrayLayer = 0
 	};
 	vkGetImageSubresourceLayout(dev, img, &subresource, &layout);
-	errlog("Vulkan stride: %d", layout.rowPitch);
+	errlog("Vulkan stride: %d", layout.rowPitch);*/
 	return img;
 }
 
@@ -563,6 +603,7 @@ VkImage screen_image[2];
 
 
 int vulkan_init(bool *dmabuf, bool *dmabuf_mod) {
+	printf("┌─ RENDERER (Vulkan)\n");
 	bool dmabuf_inst, dmabuf_mod_inst;
 	VkInstance instance = create_instance(&dmabuf_inst, &dmabuf_mod_inst);
 	if (instance == VK_NULL_HANDLE) {

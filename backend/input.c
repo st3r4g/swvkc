@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <backend/input.h>
 #include <backend/dev.h>
+#include <util/log.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -74,6 +75,7 @@ int create_file(off_t size) {
 }
 
 struct input *input_setup() {
+	printf("├─ INPUT (Linux Input Subsystem)\n");
 	int count;
 	struct key_dev *key_devs = find_keyboard_devices(&count);
 	int n;
@@ -88,6 +90,7 @@ struct input *input_setup() {
 		// Handle count == 0
 		n = 0;
 	}
+	boxlog("Device node: %s", key_devs[n].devnode);
 
 	struct input *S = calloc(1, sizeof(struct input));
 	S->key_fd = open(key_devs[n].devnode, O_RDONLY | O_CLOEXEC);

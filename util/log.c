@@ -17,3 +17,13 @@ void errlog(const char *fmt, ...) {
 	fprintf(stderr, "\n");
 	va_end(args);
 }
+
+void boxlog(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+
+	fprintf(stdout, "│ ");
+	vfprintf(stdout, fmt, args);
+	fprintf(stdout, "\n");
+	va_end(args);
+}

@@ -374,19 +374,11 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	const char *status[] = {"DISABLED", "enabled"};
-	errlog("swvkc DMABUF support: %s", status[dmabuf]);
-	errlog("swvkc DMABUF with MODIFIERS support: %s", status[dmabuf_mod]);
-
 	server->screen = screen_setup(vblank_notify, server, dmabuf_mod);
 	if (!server->screen) {
 		errlog("Could not setup screen");
 		return EXIT_FAILURE;
 	}
-
-	vulkan_create_screen_image(screen_get_back_buffer(server->screen),
-	                           screen_get_front_buffer(server->screen));
-
 /*
  * Fast computers could be affected by the 'stuck enter key' bug
  * (due to EVIOCGRAB inside input_setup)
@@ -396,6 +388,16 @@ int main(int argc, char *argv[]) {
 		errlog("Could not setup input");
 		return EXIT_FAILURE;
 	}
+
+	printf("├─ SWVKC (Wayland compositor)\n");
+	const char *status[] = {"DISABLED", "enabled"};
+	boxlog("Buffer manager: %s", screen_get_bufmgr_impl(server->screen));
+	boxlog("dma-buf support: %s", status[dmabuf]);
+	boxlog("dma-buf with modifiers support: %s", status[dmabuf_mod]);
+	printf("└\n");
+
+	vulkan_create_screen_image(screen_get_back_buffer(server->screen),
+	                           screen_get_front_buffer(server->screen));
 
 	server->display = wl_display_create();
 	struct wl_display *D = server->display;

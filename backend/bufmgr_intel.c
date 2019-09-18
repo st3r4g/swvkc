@@ -48,6 +48,10 @@ void bufmgr_destroy(struct bufmgr *self) {
 	free(self);
 }
 
+const char *bufmgr_get_name(struct bufmgr *self) {
+	return "intel_bufmgr";
+}
+
 struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height,
 bool linear) {
 	int bpp = 32;

@@ -25,6 +25,7 @@ struct gbm_device *screen_get_gbm_device(struct screen *);
 struct box screen_get_dimensions(struct screen *S);
 struct buffer *screen_get_back_buffer(struct screen *screen);
 struct buffer *screen_get_front_buffer(struct screen *screen);
+const char *screen_get_bufmgr_impl(struct screen *screen);
 bool screen_is_overlay_supported(struct screen *S);
 void screen_post_direct(struct screen *, uint32_t width, uint32_t height,
 uint32_t format, int fd, int stride, int offset, uint64_t modifier);

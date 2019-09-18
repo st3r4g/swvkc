@@ -3,6 +3,7 @@
 
 struct bufmgr *bufmgr_create(int drm_fd);
 void bufmgr_destroy(struct bufmgr *self);
+const char *bufmgr_get_name(struct bufmgr *self);
 
 struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height,
 bool linear);

@@ -22,7 +22,7 @@ void legacy_wl_drm_setup(struct wl_display *D, int drm_fd) {
 	if (eglInitialize(display, &major, &minor) == EGL_FALSE) {
 		fprintf(stderr, "eglInitialize failed\n");
 	}
-	printf("EGL %i.%i initialized\n", major, minor);
+//	printf("EGL %i.%i initialized\n", major, minor);
 
 	eglBindWaylandDisplayWL = (PFNEGLBINDWAYLANDDISPLAYWL)
 	eglGetProcAddress("eglBindWaylandDisplayWL");
