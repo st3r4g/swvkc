@@ -1,29 +1,22 @@
 #define _POSIX_C_SOURCE 200809L
+
+#include <swvkc.h>
+#include <globals.h>
+
 #include <legacy_wl_drm.h> // legacy
 #include <backend/input.h>
 #include <backend/screen.h>
 #include <backend/vulkan.h>
-#include <core/compositor.h>
-#include <core/data_device_manager.h>
-#include <core/output.h>
-#include <core/seat.h>
 #include <core/keyboard.h>
-#include <core/wl_subcompositor.h>
+#include <core/wl_surface.h>
 #include <core/subsurface.h>
-#include <extensions/xdg_shell/xdg_wm_base.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
-#include <extensions/fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.h>
-#include <extensions/server-decoration/org_kde_kwin_server_decoration_manager.h>
-#include <util/box.h>
+#include <extensions/xdg_shell/xdg_surface.h>
+#include <extensions/xdg_shell/xdg_toplevel.h>
 #include <util/log.h>
 #include <util/util.h>
 
-#include <wayland-server-core.h>
-#include <wayland-server-protocol.h>
 #include <xdg-shell-server-protocol.h>
-#include <linux-dmabuf-unstable-v1-server-protocol.h>
-#include <fullscreen-shell-unstable-v1-server-protocol.h>
-#include <server-decoration-server-protocol.h>
 
 #include <linux/input-event-codes.h>
 
@@ -34,18 +27,6 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
-
-struct server {
-	struct wl_display *display;
-
-	struct input *input;
-	struct screen *screen;
-/*
- * Temporary way to manage surfaces, it should evolve into a tree
- */
-	struct wl_list mapped_surfaces_list;
-	struct wl_list bufres_list; // Buffers that have been scanout
-};
 
 struct surface_node {
 	struct surface *surface;
@@ -372,100 +353,14 @@ static int key_ev_handler(int key_fd, uint32_t mask, void *data) {
 	return 0;
 }
 
-static void compositor_bind(struct wl_client *client, void *data, uint32_t
-version, uint32_t id) {
-	struct server *server = data;
-	struct wl_resource *resource = wl_resource_create(client,
-	&wl_compositor_interface, version, id);
-	struct surface_events surface_events = {
-		.map = surface_map_notify,
-		.unmap = surface_unmap_notify,
-		.contents_update = surface_contents_update_notify,
-		.user_data = server
-	};
-	compositor_new(resource, surface_events);
-}
-
-static void data_device_manager_bind(struct wl_client *client, void *data,
-uint32_t version, uint32_t id) {
-	struct wl_resource *resource = wl_resource_create(client,
-	&wl_compositor_interface, version, id);
-	data_device_manager_new(resource);
-}
-
-
-static void seat_bind(struct wl_client *client, void *data, uint32_t version,
-uint32_t id) {
-	struct server *server = data;
-	struct wl_resource *resource = wl_resource_create(client,
-	&wl_seat_interface, version, id);
-	seat_new(resource, server->input);
-}
-
-static void subcompositor_bind(struct wl_client *client, void *data, uint32_t
-version, uint32_t id) {
-	struct wl_resource *resource = wl_resource_create(client,
-	&wl_subcompositor_interface, version, id);
-	wl_subcompositor_new(resource);
-}
-
-static void output_bind(struct wl_client *client, void *data, uint32_t version,
-uint32_t id) {
-	struct wl_resource *resource = wl_resource_create(client,
-	&wl_output_interface, version, id);
-	output_new(resource);
-}
-
-static void xdg_wm_base_bind(struct wl_client *client, void *data, uint32_t
-version, uint32_t id) {
-	struct server *server = data;
-	struct wl_resource *resource = wl_resource_create(client,
-	&xdg_wm_base_interface, version, id);
-	struct xdg_toplevel_events xdg_toplevel_events = {
-		.init = xdg_toplevel_init_notify,
-		.user_data = server
-	};
-	xdg_wm_base_new(resource, server, xdg_toplevel_events);
-}
-
-static void zwp_linux_dmabuf_v1_bind(struct wl_client *client, void *data, uint32_t
-version, uint32_t id) {
-	struct server *server = data;
-	struct wl_resource *resource = wl_resource_create(client,
-	&zwp_linux_dmabuf_v1_interface, version, id);
-	struct buffer_dmabuf_events buffer_dmabuf_events = {
-		.create = buffer_dmabuf_create_notify,
-		.destroy = buffer_dmabuf_destroy_notify,
-		.user_data = server
-	};
-	zwp_linux_dmabuf_v1_new(resource, buffer_dmabuf_events);
-}
-
-static void zwp_fullscreen_shell_v1_bind(struct wl_client *client, void *data, uint32_t
-version, uint32_t id) {
-	struct wl_resource *resource = wl_resource_create(client,
-	&zwp_fullscreen_shell_v1_interface, version, id);
-	zwp_fullscreen_shell_v1_new(resource);
-}
-
-static void org_kde_kwin_server_decoration_manager_bind(struct wl_client
-*client, void *data, uint32_t version, uint32_t id) {
-	struct wl_resource *resource = wl_resource_create(client,
-	&org_kde_kwin_server_decoration_manager_interface, version, id);
-	org_kde_kwin_server_decoration_manager_new(resource);
-}
-
-// For debugging
-static bool global_filter(const struct wl_client *client, const struct wl_global
-*global, void *data) {
-/*	char *client_name = get_a_name((struct wl_client*)client);
-	bool condition = wl_global_get_interface(global) == &zwp_fullscreen_shell_v1_interface;
-	if (!strcmp(client_name, "weston-simple-d") && condition) {
-		free(client_name);
-		return false;
+void spawn_client(char **argv) {
+	if (fork() == 0) {
+		execvp(argv[0], argv);
+		fprintf(stderr, "execvp %s: %s\n", argv[0], strerror(errno));
+		errlog("Could not start client %s", argv[0]);
+		_exit(EXIT_FAILURE);
+		/* NOTREACHED */
 	}
-	free(client_name);*/
-	return true;
 }
 
 int main(int argc, char *argv[]) {
@@ -475,9 +370,9 @@ int main(int argc, char *argv[]) {
 
 	bool dmabuf = false, dmabuf_mod = false;
 	vulkan_init(&dmabuf, &dmabuf_mod);
-	const char *words[] = {"DISABLED", "enabled"};
-	errlog("swvkc DMABUF support: %s", words[dmabuf]);
-	errlog("swvkc DMABUF with MODIFIERS support: %s", words[dmabuf_mod]);
+	const char *status[] = {"DISABLED", "enabled"};
+	errlog("swvkc DMABUF support: %s", status[dmabuf]);
+	errlog("swvkc DMABUF with MODIFIERS support: %s", status[dmabuf_mod]);
 
 	server->screen = screen_setup(vblank_notify, server, dmabuf_mod);
 	if (!server->screen) {
@@ -487,6 +382,16 @@ int main(int argc, char *argv[]) {
 
 	vulkan_create_screen_image(screen_get_back_buffer(server->screen),
 	                           screen_get_front_buffer(server->screen));
+
+/*
+ * Fast computers could be affected by the 'stuck enter key' bug
+ * (due to EVIOCGRAB inside input_setup)
+ */
+	server->input = input_setup();
+	if (!server->input) {
+		errlog("Could not setup input");
+		return EXIT_FAILURE;
+	}
 
 	server->display = wl_display_create();
 	struct wl_display *D = server->display;
@@ -500,34 +405,10 @@ int main(int argc, char *argv[]) {
 	setenv("WAYLAND_DISPLAY", socket, 0);
 	setenv("QT_QPA_PLATFORM", "wayland-egl", 0);
 
-	wl_global_create(D, &wl_compositor_interface, 4, server,
-	compositor_bind);
-	wl_global_create(D, &wl_subcompositor_interface, 1, 0,
-	subcompositor_bind);
-	wl_global_create(D, &wl_data_device_manager_interface, 1, 0,
-	data_device_manager_bind);
-	wl_global_create(D, &wl_seat_interface, 5, server, seat_bind);
-	wl_global_create(D, &wl_output_interface, 3, 0, output_bind);
-	wl_display_init_shm(D);
-	wl_global_create(D, &xdg_wm_base_interface, 1, server,
-	xdg_wm_base_bind);
-	if (dmabuf)
-		wl_global_create(D, &zwp_linux_dmabuf_v1_interface, 3, server,
-		 zwp_linux_dmabuf_v1_bind);
-	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
-	zwp_fullscreen_shell_v1_bind);
-	wl_global_create(D, &org_kde_kwin_server_decoration_manager_interface,
-	1, NULL, org_kde_kwin_server_decoration_manager_bind);
-
-	wl_display_set_global_filter(D, global_filter, 0);
-
-// Can I move at the beginning of the program (still enter key stuck?)
-	server->input = input_setup();
-	if (!server->input) {
-		errlog("Could not setup input");
-		return EXIT_FAILURE;
-	}
-	
+	create_globals(server, D, dmabuf);
+/*
+ * Creates the `wl_drm` global required for authenticating clients to DRM
+ */
 	legacy_wl_drm_setup(D, screen_get_gpu_fd(server->screen));
 
 	struct wl_event_loop *el = wl_display_get_event_loop(D);
@@ -536,15 +417,8 @@ int main(int argc, char *argv[]) {
 	wl_event_loop_add_fd(el, input_get_key_fd(server->input),
 	WL_EVENT_READABLE, key_ev_handler, server);
 
-	if (argc > 1) {
-		if (fork() == 0) {
-			execvp(argv[1], argv+1);
-			fprintf(stderr, "execvp %s: %s\n", argv[1], strerror(errno));
-			errlog("Could not start client %s", argv[1]);
-			_exit(0);
-			/* NOTREACHED */
-		}
-	}
+	if (argc > 1)
+		spawn_client(argv+1);
 
 //	screen_post(server->screen, 0);
 

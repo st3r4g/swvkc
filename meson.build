@@ -26,7 +26,7 @@ src += [x+'xdg_shell/xdg_wm_base.c',
 	x+'fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.c',
 	x+'server-decoration/org_kde_kwin_server_decoration_manager.c',
 	x+'server-decoration/org_kde_kwin_server_decoration.c']
-src += ['legacy_wl_drm.c', 'main.c']
+src += ['legacy_wl_drm.c', 'globals.c', 'main.c']
 
 wayland_protocols = dependency('wayland-protocols')
 protocols_path = wayland_protocols.get_pkgconfig_variable('pkgdatadir')
