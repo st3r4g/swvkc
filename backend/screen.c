@@ -333,13 +333,15 @@ void screen_atomic_test(struct screen *S) {
 int iffdtcn = 0;
 int iffdtc[64] = {-1};
 
-int screen_atomic_commit(struct screen *self, int *out_fence_fd) {
+int screen_atomic_commit(struct screen *self, bool with_out_fence, int
+*out_fence_fd) {
 	int ret;
 
 	assert(self->req);
 
-	drmModeAtomicAddProperty(self->req, self->crtc_id,
-	self->props.crtc.out_fence_ptr, (uint64_t)out_fence_fd);
+	if (with_out_fence)
+		drmModeAtomicAddProperty(self->req, self->crtc_id,
+		self->props.crtc.out_fence_ptr, (uint64_t)out_fence_fd);
 
 	ret = drmModeAtomicCommit(self->gpu_fd, self->req,
 	DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, self);

@@ -3,12 +3,12 @@
 
 #include <core/wl_surface.h>
 #include <extensions/linux-explicit-synchronization-v1/zwp_linux_surface_synchronization_v1.h>
-#include <extensions/linux-explicit-synchronization-v1/zwp_linux_buffer_release_v1.h>
 #include <util/util.h>
 
 #include <linux-explicit-synchronization-unstable-v1-server-protocol.h>
 
 #include <stdlib.h>
+#include <unistd.h>
 
 enum staged_field {
 	FD = 1 << 0
@@ -94,6 +94,8 @@ linux_surface_synchronization *self) {
 	if (!self || !self->buffer_release_resource)
 		return;
 	zwp_linux_buffer_release_v1_send_immediate_release(self->buffer_release_resource);
+	wl_resource_destroy(self->buffer_release_resource);
+	self->buffer_release_resource = NULL;
 }
 
 void linux_surface_synchronization_send_fenced_release(struct
@@ -102,4 +104,10 @@ linux_surface_synchronization *self, int fence_fd) {
 		return;
 	zwp_linux_buffer_release_v1_send_fenced_release(self->buffer_release_resource,
 	 fence_fd);
+	wl_resource_destroy(self->buffer_release_resource);
+	self->buffer_release_resource = NULL;
+/*
+ * Can the client still access the fd if I close it here? It seems so...
+ */
+	close(fence_fd);
 }

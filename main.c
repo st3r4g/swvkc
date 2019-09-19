@@ -185,11 +185,11 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 		wl_buffer_send_release(buffer);
 	} else {
 		struct screen *screen = server->screen;
+		struct wl_resource *extension_resource =
+		 util_get_extension(&surface->extensions,
+		  "zwp_linux_surface_synchronization_v1");
 		if (wl_buffer_is_dmabuf(buffer)) {
 			int in_fence_fd = -1;
-			struct wl_resource *extension_resource =
-			 util_get_extension(&surface->extensions,
-			  "zwp_linux_surface_synchronization_v1");
 			if (extension_resource) {
 				struct linux_surface_synchronization
 				*linux_surface_synchronization =
@@ -209,10 +209,11 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 		}
 
 		int out_fence_fd = -1;
-		screen_atomic_commit(screen, &out_fence_fd);
-		struct wl_resource *extension_resource =
-		 util_get_extension(&surface->extensions,
-		  "zwp_linux_surface_synchronization_v1");
+		/*
+		 * Otherwise we have to close the useless fds produced (I believe)
+		 */
+		bool with_out_fence = (bool)extension_resource;
+		screen_atomic_commit(screen, with_out_fence, &out_fence_fd);
 		if (extension_resource) {
 			struct linux_surface_synchronization
 			*linux_surface_synchronization =

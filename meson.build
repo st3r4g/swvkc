@@ -26,7 +26,6 @@ src += [x+'xdg_shell/xdg_wm_base.c',
 	x+'linux-dmabuf-unstable-v1/wl_buffer_dmabuf.c',
 	x+'linux-explicit-synchronization-v1/zwp_linux_explicit_synchronization_v1.c',
 	x+'linux-explicit-synchronization-v1/zwp_linux_surface_synchronization_v1.c',
-	x+'linux-explicit-synchronization-v1/zwp_linux_buffer_release_v1.c',
 	x+'fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.c',
 	x+'server-decoration/org_kde_kwin_server_decoration_manager.c',
 	x+'server-decoration/org_kde_kwin_server_decoration.c']
