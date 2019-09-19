@@ -10,6 +10,7 @@
 #include <core/wl_subcompositor.h>
 #include <extensions/xdg_shell/xdg_wm_base.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
+#include <extensions/linux-explicit-synchronization-v1/zwp_linux_explicit_synchronization_v1.h>
 #include <extensions/fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.h>
 #include <extensions/server-decoration/org_kde_kwin_server_decoration_manager.h>
 
@@ -19,6 +20,7 @@
 #include <wayland-server-protocol.h>
 #include <xdg-shell-server-protocol.h>
 #include <linux-dmabuf-unstable-v1-server-protocol.h>
+#include <linux-explicit-synchronization-unstable-v1-server-protocol.h>
 #include <fullscreen-shell-unstable-v1-server-protocol.h>
 #include <server-decoration-server-protocol.h>
 
@@ -107,6 +109,14 @@ version, uint32_t id) {
 	zwp_linux_dmabuf_v1_new(resource, buffer_dmabuf_events);
 }
 
+static void zwp_linux_explicit_synchronization_v1_bind(struct wl_client *client,
+void *data, uint32_t version, uint32_t id) {
+//	struct server *server = data;
+	struct wl_resource *resource = wl_resource_create(client,
+	&zwp_linux_explicit_synchronization_v1_interface, version, id);
+	linux_explicit_synchronization_new(resource);
+}
+
 static void zwp_fullscreen_shell_v1_bind(struct wl_client *client, void *data, uint32_t
 version, uint32_t id) {
 	struct wl_resource *resource = wl_resource_create(client,
@@ -149,6 +159,8 @@ void create_globals(struct server *server, struct wl_display *D, bool dmabuf) {
 	if (dmabuf)
 		wl_global_create(D, &zwp_linux_dmabuf_v1_interface, 3, server,
 		 zwp_linux_dmabuf_v1_bind);
+	wl_global_create(D, &zwp_linux_explicit_synchronization_v1_interface, 1,
+	server, zwp_linux_explicit_synchronization_v1_bind);
 	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
 	zwp_fullscreen_shell_v1_bind);
 	wl_global_create(D, &org_kde_kwin_server_decoration_manager_interface,
