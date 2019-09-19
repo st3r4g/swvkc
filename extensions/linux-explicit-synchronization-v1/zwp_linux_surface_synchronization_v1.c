@@ -3,6 +3,7 @@
 
 #include <core/wl_surface.h>
 #include <extensions/linux-explicit-synchronization-v1/zwp_linux_surface_synchronization_v1.h>
+#include <util/log.h>
 #include <util/util.h>
 
 #include <linux-explicit-synchronization-unstable-v1-server-protocol.h>
@@ -10,11 +11,32 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+/*
+ * TODO: Protocol errors
+ */
+
 enum staged_field {
 	FD = 1 << 0
 };
 
+struct dbuf_state_ {
+	int fd;
+};
+
+struct linux_surface_synchronization {
+	struct dbuf_state_ *current, *pending;
+	uint8_t staged; // bitmask
+	struct wl_listener commit;
+
+	struct surface *surface;
+	struct wl_resource *buffer_release_resource;
+};
+
 static void destroy(struct wl_client *client, struct wl_resource *resource) {
+	struct linux_surface_synchronization *self
+	 = wl_resource_get_user_data(resource);
+	if (self->staged & FD)
+		close(self->pending->fd);
 	wl_resource_destroy(resource);
 }
 
@@ -47,6 +69,8 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 
 	if (self->staged & FD)
 		self->current->fd = self->pending->fd;
+
+	self->staged = 0;
 }
 
 static void destroyed(struct wl_resource *resource) {
@@ -65,8 +89,8 @@ static void destroyed(struct wl_resource *resource) {
 	free(self);
 }
 
-struct linux_surface_synchronization *linux_surface_synchronization_new(struct
-wl_resource *resource, struct surface *surface) {
+void linux_surface_synchronization_new(struct wl_resource *resource, struct
+surface *surface) {
 	struct linux_surface_synchronization *self
 	 = calloc(1, sizeof(struct linux_surface_synchronization));
 	self->pending = malloc(sizeof(struct dbuf_state_));
@@ -86,7 +110,11 @@ wl_resource *resource, struct surface *surface) {
 	struct extension_node *node = malloc(sizeof(struct extension_node));
 	node->resource = resource;
 	wl_list_insert(&surface->extensions, &node->link);
-	return self;
+}
+
+int linux_surface_synchronization_get_fence(struct linux_surface_synchronization
+*self) {
+	return self->current->fd;
 }
 
 void linux_surface_synchronization_send_immediate_release(struct
@@ -104,10 +132,10 @@ linux_surface_synchronization *self, int fence_fd) {
 		return;
 	zwp_linux_buffer_release_v1_send_fenced_release(self->buffer_release_resource,
 	 fence_fd);
-	wl_resource_destroy(self->buffer_release_resource);
-	self->buffer_release_resource = NULL;
 /*
- * Can the client still access the fd if I close it here? It seems so...
+ * Wayland has duped the fd so we can close it right away
  */
 	close(fence_fd);
+	wl_resource_destroy(self->buffer_release_resource);
+	self->buffer_release_resource = NULL;
 }

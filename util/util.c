@@ -1,7 +1,9 @@
 #define _POSIX_C_SOURCE 200809L
 #include <wayland-server-core.h>
 #include <util/util.h>
+#include <util/log.h>
 
+#include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -133,4 +135,15 @@ int a() {
 	int ns = t.tv_nsec - t0.tv_nsec;
 	t0 = t;
 	return s * 1000 + ns / 1000000;
+}
+
+void fd_test(int n) {
+	int fd[64] = {-1};
+	for (int i=0; i<n && i<64; i++) {
+		fd[i] = open("/tmp", O_RDWR | O_TMPFILE);
+		errlog("fd test: %d / %d", fd[i], n);
+	}
+	for (int i=0; i<n; i++) {
+		close(fd[i]);
+	}
 }

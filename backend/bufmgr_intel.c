@@ -112,6 +112,8 @@ uint64_t modifier) {
 			free(bos);
 			return NULL;
 		}
+
+//		drm_intel_gem_bo_disable_implicit_sync(bos[i]); XXX: investigate this
 	}
 	struct buffer *buffer = malloc(sizeof(struct buffer));
 	buffer->width = width;

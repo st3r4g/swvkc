@@ -13,3 +13,4 @@ char *read_file(const char *);
 char *get_a_name(struct wl_client *client);
 void dmabuf_save_to_disk(int fd);
 int a();
+void fd_test(int n);

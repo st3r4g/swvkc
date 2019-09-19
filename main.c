@@ -1,5 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
+// FIXME: weston-simple-dmabuf-egl -e 0 leaks fds
+
 #include <swvkc.h>
 #include <globals.h>
 
@@ -21,6 +23,7 @@
 
 #include <linux/input-event-codes.h>
 
+#include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -38,6 +41,12 @@ struct surface_node {
 
 struct bufres_node {
 	struct wl_resource *bufres;
+	struct wl_list link;
+};
+
+struct lss_node {
+	struct linux_surface_synchronization *lss;
+	int out_fence_fd;
 	struct wl_list link;
 };
 
@@ -195,7 +204,7 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 				*linux_surface_synchronization =
 				wl_resource_get_user_data(extension_resource);
 				in_fence_fd =
-				 linux_surface_synchronization->current->fd;
+				 linux_surface_synchronization_get_fence(linux_surface_synchronization);
 			}
 
 			dmabuf(buffer, screen, in_fence_fd);
@@ -220,9 +229,12 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 			wl_resource_get_user_data(extension_resource);
 			if (out_fence_fd < 0)
 				linux_surface_synchronization_send_immediate_release(linux_surface_synchronization);
-			else
-				linux_surface_synchronization_send_fenced_release(linux_surface_synchronization,
-				 out_fence_fd);
+			else {
+				struct lss_node *node = malloc(sizeof(*node));
+				node->lss = linux_surface_synchronization;
+				node->out_fence_fd = out_fence_fd;
+				wl_list_insert(&server->lss_list, &node->link);
+			}
 		}
 	}
 }
@@ -334,6 +346,21 @@ tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 		wl_buffer_send_release(node->bufres);
 		wl_list_remove(&node->link);
 		free(node);
+
+	}
+
+/*
+ * Not 100% sure but this seems to work
+ * TODO: maybe storing one element is enough, think about more general cases
+ */
+	if (wl_list_length(&server->lss_list) > 0) {
+		assert(wl_list_length(&server->lss_list) == 1);
+		struct lss_node *node_;
+		node_ = wl_container_of(server->lss_list.next, node_, link);
+		linux_surface_synchronization_send_fenced_release(node_->lss,
+		 node_->out_fence_fd);
+		wl_list_remove(&node_->link);
+		free(node_);
 	}
 }
 
@@ -396,6 +423,7 @@ int main(int argc, char *argv[]) {
 	struct server *server = calloc(1, sizeof(struct server));
 	wl_list_init(&server->mapped_surfaces_list);
 	wl_list_init(&server->bufres_list);
+	wl_list_init(&server->lss_list);
 
 	bool dmabuf = false, dmabuf_mod = false;
 	if (vulkan_init(&dmabuf, &dmabuf_mod) < 0) {
@@ -421,8 +449,8 @@ int main(int argc, char *argv[]) {
 	printf("├─ SWVKC (Wayland compositor)\n");
 	const char *status[] = {"DISABLED", "enabled"};
 	boxlog("Buffer manager: %s", screen_get_bufmgr_impl(server->screen));
-	boxlog("dma-buf support: %s", status[dmabuf]);
-	boxlog("dma-buf with modifiers support: %s", status[dmabuf_mod]);
+	boxlog("Vulkan dma-buf support: %s", status[dmabuf]);
+	boxlog("Vulkan dma-buf with modifiers support: %s", status[dmabuf_mod]);
 	printf("└\n");
 
 	vulkan_create_screen_image(screen_get_back_buffer(server->screen),

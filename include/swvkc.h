@@ -10,4 +10,5 @@ struct server {
  */
 	struct wl_list mapped_surfaces_list;
 	struct wl_list bufres_list; // Buffers that have been scanout
+	struct wl_list lss_list;
 };
