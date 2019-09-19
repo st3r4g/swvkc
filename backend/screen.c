@@ -94,6 +94,7 @@ int drm_setup(struct screen *);
 struct fb *screen_fb_create_main(struct screen *screen, int width, int height,
 bool linear);
 void screen_fb_destroy(struct screen *screen, struct fb *fb);
+const char *conn_get_name(uint32_t type_id);
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
 unsigned int, void*, bool), void *user_data, bool dmabuf_mod) {
@@ -144,6 +145,7 @@ int crtc_index_from_id(int fd, uint32_t crtc_id) {
 
 /* replacement for simple_modeset */
 void planes(struct screen *S, uint32_t crtc_id) {
+	int n_overlay = 0, n_cursor = 0;
 	drmModePlaneRes *plane_res = drmModeGetPlaneResources(S->gpu_fd);
 	for (size_t i=0; i<plane_res->count_planes; i++) {
 		drmModePlane *plane = drmModeGetPlane(S->gpu_fd, plane_res->planes[i]);
@@ -159,11 +161,14 @@ void planes(struct screen *S, uint32_t crtc_id) {
 			obj_props->props[j]);
 			if (!strcmp(prop->name, "type")) {
 				if (obj_props->prop_values[j] == DRM_PLANE_TYPE_PRIMARY) {
-					boxlog("primary %d", plane->plane_id);
+//					boxlog("primary %d", plane->plane_id);
 					S->plane_id = plane->plane_id;
 				} else if (obj_props->prop_values[j] == DRM_PLANE_TYPE_OVERLAY) {
-					boxlog("overlay %d", plane->plane_id);
+//					boxlog("overlay %d", plane->plane_id);
 					S->overlay_plane_id = plane->plane_id;
+					n_overlay++;
+				} else if (obj_props->prop_values[j] == DRM_PLANE_TYPE_CURSOR) {
+					n_cursor++;
 				}
 			}
 			drmModeFreeProperty(prop);
@@ -172,6 +177,8 @@ void planes(struct screen *S, uint32_t crtc_id) {
 		drmModeFreePlane(plane);
 	}
 	drmModeFreePlaneResources(plane_res);
+	boxlog("   overlay planes: %d", n_overlay);
+	boxlog("    cursor planes: %d", n_cursor);
 }
 
 static int modeset_find_crtc(int fd, drmModeRes *res, drmModeConnector *conn);
@@ -250,8 +257,10 @@ int drm_setup(struct screen *S) {
 		n = 0;
 	}
 	drmModeCrtc *crtc = get_crtc_from_conn(S->gpu_fd, connected[n]);
-	boxlog("vrefresh: %d, connected: %d", crtc->mode.vrefresh,
-	connected[n]->connector_id);
+	boxlog("Display connector: %s", conn_get_name(connected[n]->connector_type));
+	boxlog("             mode: %s@%dHz", crtc->mode.name, crtc->mode.vrefresh);
+//	boxlog("vrefresh: %d, connected: %d", crtc->mode.vrefresh,
+//	connected[n]->connector_id);
 
 	S->crtc_id = crtc->crtc_id;
 	simple_modeset(S, crtc->crtc_id); // TODO remove
@@ -260,7 +269,7 @@ int drm_setup(struct screen *S) {
 	S->props = find_prop_ids(S->gpu_fd, S->plane_id, connected[n]->connector_id, S->crtc_id);
 	S->props_plane_fb_id = S->props.plane.fb_id;
 
-	boxlog("%d %d %d", S->plane_id, S->props_plane_fb_id, S->old_fb_id);
+//	boxlog("%d %d %d", S->plane_id, S->props_plane_fb_id, S->old_fb_id);
 
 	request_vblank(S);
 	return 0;
@@ -321,14 +330,16 @@ void screen_atomic_test(struct screen *S) {
 	}
 }
 
-int screen_atomic_commit(struct screen *self) {
+int iffdtcn = 0;
+int iffdtc[64] = {-1};
+
+int screen_atomic_commit(struct screen *self, int *out_fence_fd) {
 	int ret;
-//	int out_fence_fd = -1;
 
 	assert(self->req);
 
-//	drmModeAtomicAddProperty(self->req, self->crtc_id,
-//	self->props.crtc.out_fence_ptr, (uint64_t)&out_fence_fd);
+	drmModeAtomicAddProperty(self->req, self->crtc_id,
+	self->props.crtc.out_fence_ptr, (uint64_t)out_fence_fd);
 
 	ret = drmModeAtomicCommit(self->gpu_fd, self->req,
 	DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, self);
@@ -340,6 +351,12 @@ int screen_atomic_commit(struct screen *self) {
 
 	if (ret == 0)
 		self->pending_page_flip = true;
+/*
+ * Close in_fence_fds to close
+ */
+	for (int i=0; i<iffdtcn; i++)
+		close(iffdtc[i]);
+	iffdtcn = 0;
 
 	return ret;
 }
@@ -348,7 +365,7 @@ bool screen_page_flip_is_pending(struct screen *self) {
 	return self->pending_page_flip;
 }
 
-void client_buffer_on_primary(struct screen *S, struct fb *fb) {
+void client_buffer_on_primary(struct screen *S, struct fb *fb, int in_fence_fd) {
 	assert(!S->req);
 
 	S->req = drmModeAtomicAlloc();
@@ -357,10 +374,15 @@ void client_buffer_on_primary(struct screen *S, struct fb *fb) {
 
 	if (drmModeAtomicAddProperty(S->req, S->plane_id, S->props_plane_fb_id, fb->id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
+
+	if (drmModeAtomicAddProperty(S->req, S->plane_id,
+	 S->props.plane.in_fence_fd, in_fence_fd) < 0)
+		fprintf(stderr, "atomic add property failed\n");
+	iffdtc[iffdtcn++] = in_fence_fd;
 }
 
 void client_buffer_on_overlay(struct screen *S, struct fb *fb, uint32_t width,
-uint32_t height) {
+uint32_t height, int in_fence_fd) {
 	assert(!S->req);
 
 	S->req = drmModeAtomicAlloc();
@@ -379,6 +401,11 @@ uint32_t height) {
 
 	if (drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.fb_id, fb->id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
+
+	if (drmModeAtomicAddProperty(S->req, S->plane_id,
+	 S->props.plane.in_fence_fd, in_fence_fd) < 0)
+		fprintf(stderr, "atomic add property failed\n");
+	iffdtc[iffdtcn++] = in_fence_fd;
 }
 
 void screen_main(struct screen *S) {
@@ -624,4 +651,30 @@ uint32_t get_active_fb(int fd, uint32_t plane_id) {
 
 const char *screen_get_bufmgr_impl(struct screen *screen) {
 	return bufmgr_get_name(screen->bufmgr);
+}
+
+const char *conn_get_name(uint32_t type_id) {
+	switch (type_id) {
+	case DRM_MODE_CONNECTOR_Unknown:     return "Unknown";
+	case DRM_MODE_CONNECTOR_VGA:         return "VGA";
+	case DRM_MODE_CONNECTOR_DVII:        return "DVI-I";
+	case DRM_MODE_CONNECTOR_DVID:        return "DVI-D";
+	case DRM_MODE_CONNECTOR_DVIA:        return "DVI-A";
+	case DRM_MODE_CONNECTOR_Composite:   return "Composite";
+	case DRM_MODE_CONNECTOR_SVIDEO:      return "SVIDEO";
+	case DRM_MODE_CONNECTOR_LVDS:        return "LVDS";
+	case DRM_MODE_CONNECTOR_Component:   return "Component";
+	case DRM_MODE_CONNECTOR_9PinDIN:     return "DIN";
+	case DRM_MODE_CONNECTOR_DisplayPort: return "DP";
+	case DRM_MODE_CONNECTOR_HDMIA:       return "HDMI-A";
+	case DRM_MODE_CONNECTOR_HDMIB:       return "HDMI-B";
+	case DRM_MODE_CONNECTOR_TV:          return "TV";
+	case DRM_MODE_CONNECTOR_eDP:         return "eDP";
+	case DRM_MODE_CONNECTOR_VIRTUAL:     return "Virtual";
+	case DRM_MODE_CONNECTOR_DSI:         return "DSI";
+#ifdef DRM_MODE_CONNECTOR_DPI
+	case DRM_MODE_CONNECTOR_DPI:         return "DPI";
+#endif
+	default:                             return "Unknown";
+	}
 }

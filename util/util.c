@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include <wayland-server-core.h>
+#include <util/util.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -38,6 +39,25 @@ struct wl_resource *util_wl_client_get_output(struct wl_client *client) {
 	struct wl_resource *output_resource = NULL;
 	wl_client_for_each_resource(client, find_output, &output_resource);
 	return output_resource;
+}
+
+/*
+ * Assuming that there is a single extension with a given class in the list
+ */
+struct wl_resource *util_get_extension(struct wl_list *extensions, const char
+*class) {
+	bool found = false;
+	struct extension_node *node;
+	wl_list_for_each(node, extensions, link)
+		if (!strcmp(wl_resource_get_class(node->resource), class)) {
+			found = true;
+			break;
+		}
+
+	if (found)
+		return node->resource;
+	else
+		return NULL;
 }
 
 char *read_file(const char *path)

@@ -157,6 +157,8 @@ surface_events) {
 	surface->pending = calloc(1, sizeof(struct dbuf_state));
 	surface->current = calloc(1, sizeof(struct dbuf_state));
 
+	wl_list_init(&surface->extensions);
+
 	surface->resource = resource;
 
 	// Buffered state initialization

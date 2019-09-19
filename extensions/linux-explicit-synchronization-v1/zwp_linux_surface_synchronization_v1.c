@@ -4,11 +4,11 @@
 #include <core/wl_surface.h>
 #include <extensions/linux-explicit-synchronization-v1/zwp_linux_surface_synchronization_v1.h>
 #include <extensions/linux-explicit-synchronization-v1/zwp_linux_buffer_release_v1.h>
+#include <util/util.h>
 
 #include <linux-explicit-synchronization-unstable-v1-server-protocol.h>
 
 #include <stdlib.h>
-#include <unistd.h>
 
 enum staged_field {
 	FD = 1 << 0
@@ -28,9 +28,11 @@ static void set_acquire_fence(struct wl_client *client, struct wl_resource
 
 static void get_release(struct wl_client *client, struct wl_resource *resource,
 uint32_t release) {
-	struct wl_resource *child = wl_resource_create(client,
+	struct linux_surface_synchronization *self
+	 = wl_resource_get_user_data(resource);
+	struct wl_resource *buffer_release_resource = wl_resource_create(client,
 	&zwp_linux_buffer_release_v1_interface, 1, release);
-	linux_buffer_release_new(child);
+	self->buffer_release_resource = buffer_release_resource;
 }
 
 static const struct zwp_linux_surface_synchronization_v1_interface impl = {
@@ -45,13 +47,21 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 
 	if (self->staged & FD)
 		self->current->fd = self->pending->fd;
-
-	close(self->current->fd); //XXX simulate importing
 }
 
 static void destroyed(struct wl_resource *resource) {
 	struct linux_surface_synchronization *self
 	 = wl_resource_get_user_data(resource);
+/*
+ * Unregister this object as an extension to the surface
+ */
+	struct extension_node *node;
+	wl_list_for_each(node, &self->surface->extensions, link)
+		if (node->resource == resource)
+			break;
+	wl_list_remove(&node->link);
+	free(node);
+
 	free(self);
 }
 
@@ -67,6 +77,29 @@ wl_resource *resource, struct surface *surface) {
 	self->commit.notify = commit_notify;
 	wl_signal_add(&surface->commit, &self->commit);
 
+	self->surface = surface;
+
 	wl_resource_set_implementation(resource, &impl, self, destroyed);
+/*
+ * Register this object as an extension to the surface
+ */
+	struct extension_node *node = malloc(sizeof(struct extension_node));
+	node->resource = resource;
+	wl_list_insert(&surface->extensions, &node->link);
 	return self;
+}
+
+void linux_surface_synchronization_send_immediate_release(struct
+linux_surface_synchronization *self) {
+	if (!self || !self->buffer_release_resource)
+		return;
+	zwp_linux_buffer_release_v1_send_immediate_release(self->buffer_release_resource);
+}
+
+void linux_surface_synchronization_send_fenced_release(struct
+linux_surface_synchronization *self, int fence_fd) {
+	if (!self || !self->buffer_release_resource || fence_fd < 0)
+		return;
+	zwp_linux_buffer_release_v1_send_fenced_release(self->buffer_release_resource,
+	 fence_fd);
 }

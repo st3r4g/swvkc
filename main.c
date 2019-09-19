@@ -11,6 +11,7 @@
 #include <core/wl_surface.h>
 #include <core/subsurface.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
+#include <extensions/linux-explicit-synchronization-v1/zwp_linux_surface_synchronization_v1.h>
 #include <extensions/xdg_shell/xdg_surface.h>
 #include <extensions/xdg_shell/xdg_toplevel.h>
 #include <util/log.h>
@@ -52,7 +53,8 @@ struct wl_resource *focused_surface_keyboard(struct server *server) {
 	return node->keyboard;
 }
 
-void dmabuf(struct wl_resource *dmabuf_resource, struct screen *screen) {
+void dmabuf(struct wl_resource *dmabuf_resource, struct screen *screen, int
+in_fence_fd) {
 	uint32_t width = wl_buffer_dmabuf_get_width(dmabuf_resource);
 	uint32_t height = wl_buffer_dmabuf_get_height(dmabuf_resource);
 /*	uint32_t format = wl_buffer_dmabuf_get_format(dmabuf);
@@ -69,9 +71,9 @@ void dmabuf(struct wl_resource *dmabuf_resource, struct screen *screen) {
 
 	struct box screen_size = screen_get_dimensions(screen);
 	if ((int32_t)width == screen_size.width && (int32_t)height == screen_size.height)
-		client_buffer_on_primary(screen, fb);
+		client_buffer_on_primary(screen, fb, in_fence_fd);
 	else if (screen_is_overlay_supported(screen))
-		client_buffer_on_overlay(screen, fb, width, height);
+		client_buffer_on_overlay(screen, fb, width, height, in_fence_fd);
 //	else
 //		vulkan_main(1, fds[0], width, height, strides[0], mods[0]);
 }
@@ -184,7 +186,19 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 	} else {
 		struct screen *screen = server->screen;
 		if (wl_buffer_is_dmabuf(buffer)) {
-			dmabuf(buffer, screen);
+			int in_fence_fd = -1;
+			struct wl_resource *extension_resource =
+			 util_get_extension(&surface->extensions,
+			  "zwp_linux_surface_synchronization_v1");
+			if (extension_resource) {
+				struct linux_surface_synchronization
+				*linux_surface_synchronization =
+				wl_resource_get_user_data(extension_resource);
+				in_fence_fd =
+				 linux_surface_synchronization->current->fd;
+			}
+
+			dmabuf(buffer, screen, in_fence_fd);
 			struct bufres_node *node = malloc(sizeof(*node));
 			node->bufres = buffer;
 			wl_list_insert(&server->bufres_list, &node->link);
@@ -194,7 +208,21 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 			screen_main(screen);
 		}
 
-		screen_atomic_commit(screen);
+		int out_fence_fd = -1;
+		screen_atomic_commit(screen, &out_fence_fd);
+		struct wl_resource *extension_resource =
+		 util_get_extension(&surface->extensions,
+		  "zwp_linux_surface_synchronization_v1");
+		if (extension_resource) {
+			struct linux_surface_synchronization
+			*linux_surface_synchronization =
+			wl_resource_get_user_data(extension_resource);
+			if (out_fence_fd < 0)
+				linux_surface_synchronization_send_immediate_release(linux_surface_synchronization);
+			else
+				linux_surface_synchronization_send_fenced_release(linux_surface_synchronization,
+				 out_fence_fd);
+		}
 	}
 }
 

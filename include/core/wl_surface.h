@@ -69,6 +69,8 @@ struct surface {
 	void *role_object;
 	void *base_role_object;
 
+	struct wl_list extensions;
+
 	bool is_mapped;
 
 	struct wl_signal commit;
