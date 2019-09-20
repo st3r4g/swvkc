@@ -39,6 +39,7 @@ extern void buffer_dmabuf_create_notify(struct wl_buffer_dmabuf_data *dmabuf, vo
 *user_data);
 extern void buffer_dmabuf_destroy_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 *user_data);
+extern void keyboard_init_notify(struct keyboard *keyboard, void *user_data);
 
 static void compositor_bind(struct wl_client *client, void *data, uint32_t
 version, uint32_t id) {
@@ -67,7 +68,11 @@ uint32_t id) {
 	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&wl_seat_interface, version, id);
-	seat_new(resource, server->input);
+	struct keyboard_events keyboard_events = {
+		.init = keyboard_init_notify,
+		.user_data = server
+	};
+	seat_new(resource, keyboard_events);
 }
 
 static void subcompositor_bind(struct wl_client *client, void *data, uint32_t

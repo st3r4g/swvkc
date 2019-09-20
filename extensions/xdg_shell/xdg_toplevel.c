@@ -7,7 +7,6 @@
 #include <extensions/xdg_shell/xdg_toplevel.h>
 #include <extensions/xdg_shell/xdg_surface.h>
 #include <core/wl_surface.h>
-#include <backend/screen.h>
 #include <util/log.h>
 #include <util/util.h>
 

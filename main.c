@@ -278,6 +278,13 @@ void buffer_dmabuf_destroy_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 	}
 }
 
+void keyboard_init_notify(struct keyboard *keyboard, void *user_data) {
+	struct server *server = user_data;
+	int32_t fd = input_get_keymap_fd(server->input);
+	uint32_t size = input_get_keymap_size(server->input);
+	keyboard_send_keymap(keyboard, fd, size);
+}
+
 struct surface_node *match_app_id(struct server *server, char *name) {
 	struct surface_node *node, *match;
 	int i = 0;
@@ -396,8 +403,12 @@ static int key_ev_handler(int key_fd, uint32_t mask, void *data) {
 			struct wl_resource *keyboard = focused_surface_keyboard(server);
 			if (keyboard) {
 				struct keyboard *data = wl_resource_get_user_data(keyboard);
-				if (data)
-				keyboard_send(data, &aaa);
+				if (data) {
+				keyboard_send_key(data, aaa.key, aaa.state);
+				keyboard_send_modifiers(data,
+				 aaa.mods_depressed, aaa.mods_latched,
+				  aaa.mods_locked, aaa.group);
+				}
 			}
 		}
 	}

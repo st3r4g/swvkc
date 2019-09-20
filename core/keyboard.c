@@ -1,5 +1,4 @@
 #define _POSIX_C_SOURCE 200809L
-#include <backend/input.h>
 #include <util/log.h>
 #include <core/keyboard.h>
 
@@ -8,38 +7,50 @@
 
 struct keyboard {
 	struct wl_resource *resource;
-	struct input *input;
+
+	struct keyboard_events keyboard_events;
 };
 
 static void keyboard_release(struct wl_client *client, struct wl_resource
 *resource) {
+	wl_resource_destroy(resource);
 }
 
 static const struct wl_keyboard_interface impl = {
 	.release = keyboard_release
 };
 
-struct keyboard *keyboard_new(struct wl_resource *resource, struct input *input) {
-	struct keyboard *keyboard = calloc(1, sizeof(struct keyboard));
+void keyboard_new(struct wl_resource *resource, struct
+keyboard_events keyboard_events) {
+	struct keyboard *keyboard = malloc(sizeof(struct keyboard));
 	keyboard->resource = resource;
-	keyboard->input = input;
+	keyboard->keyboard_events = keyboard_events;
+
 	wl_resource_set_implementation(resource, &impl, keyboard, 0);
 
-	if (wl_resource_get_version(resource) >= WL_KEYBOARD_KEYMAP_SINCE_VERSION)
-		wl_keyboard_send_keymap(resource,
-		WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1, input_get_keymap_fd(input),
-		input_get_keymap_size(input));
 	if (wl_resource_get_version(resource) >= WL_KEYBOARD_REPEAT_INFO_SINCE_VERSION)
 		wl_keyboard_send_repeat_info(resource, 30, 300);
 
-	return keyboard;
+	keyboard_events.init(keyboard, keyboard_events.user_data);
 }
 
-void keyboard_send(struct keyboard *keyboard, const struct aaa *aaa) {
+void keyboard_send_keymap(struct keyboard *keyboard, int32_t fd, uint32_t size) {
+	struct wl_resource *resource = keyboard->resource;
+	if (wl_resource_get_version(resource) >= WL_KEYBOARD_KEYMAP_SINCE_VERSION)
+		wl_keyboard_send_keymap(resource,
+		 WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1, fd, size);
+}
+
+void keyboard_send_key(struct keyboard *keyboard, uint32_t key, uint32_t state) {
 	struct wl_resource *resource = keyboard->resource;
 	if (wl_resource_get_version(resource) >= WL_KEYBOARD_KEY_SINCE_VERSION)
-		wl_keyboard_send_key(resource, 0, 0, aaa->key, aaa->state);
+		wl_keyboard_send_key(resource, 0, 0, key, state);
+}
+
+void keyboard_send_modifiers(struct keyboard *keyboard, uint32_t mods_depressed,
+uint32_t mods_latched, uint32_t mods_locked, uint32_t group) {
+	struct wl_resource *resource = keyboard->resource;
 	if (wl_resource_get_version(resource) >= WL_KEYBOARD_MODIFIERS_SINCE_VERSION)
-		wl_keyboard_send_modifiers(resource, 0, aaa->mods_depressed,
-		aaa->mods_latched, aaa->mods_locked, aaa->group);
+		wl_keyboard_send_modifiers(resource, 0, mods_depressed,
+		 mods_latched, mods_locked, group);
 }

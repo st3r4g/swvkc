@@ -1,7 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include <util/log.h>
 #include <core/seat.h>
-#include <core/keyboard.h>
 #include <wayland-server-protocol.h>
 #include <stdlib.h>
 
@@ -14,9 +13,8 @@ uint32_t id) {
 	wl_pointer_new(pointer_resource);
 }
 
-static void seat_release(struct wl_client *client, struct wl_resource *resource)
-{
-
+static void seat_release(struct wl_client *client, struct wl_resource *resource) {
+	wl_resource_destroy(resource);
 }
 
 static void seat_get_keyboard(struct wl_client *client, struct wl_resource
@@ -24,13 +22,13 @@ static void seat_get_keyboard(struct wl_client *client, struct wl_resource
 	struct seat *seat = wl_resource_get_user_data(resource);
 	struct wl_resource *keyboard_resource = wl_resource_create(client,
 	&wl_keyboard_interface, wl_resource_get_version(resource), id);
-	seat->keyb = keyboard_new(keyboard_resource, seat->input);
+	keyboard_new(keyboard_resource, seat->keyboard_events);
 }
 
 static const struct wl_seat_interface impl = {
-	.get_pointer = get_pointer, // so that Alacritty won't crash
+	.get_pointer = get_pointer,
 	.get_keyboard = seat_get_keyboard,
-	.get_touch = 0,
+	.get_touch = 0, // should post a protocol error instead
 	.release = seat_release
 };
 
@@ -39,9 +37,11 @@ void seat_free(struct wl_resource *resource) {
 	free(seat);
 }
 
-struct seat *seat_new(struct wl_resource *resource, struct input *input) {
+struct seat *seat_new(struct wl_resource *resource, struct
+keyboard_events keyboard_events) {
 	struct seat *seat = calloc(1, sizeof(struct seat));
-	seat->input = input;
+	seat->keyboard_events = keyboard_events;
+
 	wl_resource_set_implementation(resource, &impl, seat, seat_free);
 
 	if (wl_resource_get_version(resource) >= WL_SEAT_CAPABILITIES_SINCE_VERSION)
