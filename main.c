@@ -1,7 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
 
-// FIXME: weston-simple-dmabuf-egl -e 0 leaks fds
-
 #include <swvkc.h>
 #include <globals.h>
 
@@ -218,9 +216,6 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 		}
 
 		int out_fence_fd = -1;
-		/*
-		 * Otherwise we have to close the useless fds produced (I believe)
-		 */
 		bool with_out_fence = (bool)extension_resource;
 		screen_atomic_commit(screen, with_out_fence, &out_fence_fd);
 		if (extension_resource) {
@@ -273,7 +268,7 @@ void buffer_dmabuf_destroy_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 /*	void *image = dmabuf->subsystem_object[SUBSYSTEM_VULKAN];
 	renderer_image_destroy(server->renderer, image); */
 
-// XXX: ugly
+// XXX: ugly (or maybe not...)
 	struct bufres_node *node;
 	wl_list_for_each(node, &server->bufres_list, link)
 		if (wl_resource_get_user_data(node->bufres) == dmabuf) {
@@ -324,8 +319,10 @@ tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
  */
 	bool pending_page_flip = screen_page_flip_is_pending(server->screen);
 	bool skip_frame = pending_page_flip && !vblank_has_page_flip;
+	if (skip_frame)
+		return;
 
-	if (!wl_list_empty(&server->mapped_surfaces_list) && !skip_frame) {
+	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct surface *surface = focused_surface(server);
 		if (surface->frame) {
 			uint32_t ms = tv_sec * 1000 + tv_usec / 1000;
@@ -348,13 +345,11 @@ tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 		free(node);
 
 	}
-
 /*
  * Not 100% sure but this seems to work
  * TODO: maybe storing one element is enough, think about more general cases
  */
 	if (wl_list_length(&server->lss_list) > 0) {
-		assert(wl_list_length(&server->lss_list) == 1);
 		struct lss_node *node_;
 		node_ = wl_container_of(server->lss_list.next, node_, link);
 		linux_surface_synchronization_send_fenced_release(node_->lss,

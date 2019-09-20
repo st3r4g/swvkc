@@ -128,8 +128,10 @@ linux_surface_synchronization *self) {
 
 void linux_surface_synchronization_send_fenced_release(struct
 linux_surface_synchronization *self, int fence_fd) {
-	if (!self || !self->buffer_release_resource || fence_fd < 0)
+	if (!self || !self->buffer_release_resource || fence_fd < 0) {
+		close(fence_fd);
 		return;
+	}
 	zwp_linux_buffer_release_v1_send_fenced_release(self->buffer_release_resource,
 	 fence_fd);
 /*
