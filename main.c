@@ -17,7 +17,7 @@
 #include <util/log.h>
 #include <util/util.h>
 
-#include <xdg-shell-server-protocol.h>
+#include <subprojects/libswvkc-wl/xdg-shell-server-protocol.h>
 
 #include <linux/input-event-codes.h>
 

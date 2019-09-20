@@ -28,7 +28,7 @@ int32_t framerate, uint32_t feedback) {
 static const struct zwp_fullscreen_shell_v1_interface impl = {release,
 present_surface, present_surface_for_mode};
 
-void zwp_fullscreen_shell_v1_new(struct wl_resource *resource, bool dmabuf_mod) {
+void zwp_fullscreen_shell_v1_new(struct wl_resource *resource) {
 	errlog("BOUND TO FULLSCREEN SHELL");
 	wl_resource_set_implementation(resource, &impl, NULL, NULL);
 

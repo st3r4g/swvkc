@@ -1,7 +1,4 @@
 #define _POSIX_C_SOURCE 200809L
-#include <swvkc.h>
-
-#include <backend/screen.h>
 
 #include <core/compositor.h>
 #include <core/data_device_manager.h>

@@ -1,99 +1,34 @@
-project('swvkc', 'c', version: 'pre-alpha', default_options : ['c_std=c11',
-'warning_level=3', 'werror=true'])
+project('swvkc', 'c', version: 'pre-alpha',
+        default_options: ['c_std=c11', 'warning_level=3', 'werror=true'])
 add_project_arguments('-pedantic-errors', '-Wno-unused-parameter',
-'-Wno-unused-function', language : 'c')
-add_project_link_arguments('-lm', language : 'c')
+                      '-Wno-unused-function', language : 'c')
+
+wl_proj = subproject('libswvkc-wl')
+wl_dep = wl_proj.get_variable('libswvkc_wl_dep')
 
 b = 'backend/'
-c = 'core/'
 u = 'util/'
-x = 'extensions/'
 
 bufmgr = get_option('bufmgr')
 
-src = [b+'bufmgr_'+bufmgr+'.c', b+'dev.c', b+'input.c', b+'screen.c',
-       b+'vulkan.c']
-src += [c+'compositor.c', c+'data_device.c', c+'data_device_manager.c',
-        c+'data_source.c', c+'keyboard.c', c+'output.c', c+'wl_pointer.c',
-        c+'region.c', c+'seat.c', c+'wl_subcompositor.c', c+'subsurface.c',
-        c+'wl_surface.c']
-src += [u+'algebra.c', u+'log.c', u+'util.c', u+'my_drm_handle_event.c']
-src += [x+'xdg_shell/xdg_wm_base.c',
-	x+'xdg_shell/xdg_positioner.c', x+'xdg_shell/xdg_surface.c',
-	x+'xdg_shell/xdg_toplevel.c', x+'xdg_shell/xdg_popup.c',
-	x+'linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.c',
-	x+'linux-dmabuf-unstable-v1/zwp_linux_buffer_params_v1.c',
-	x+'linux-dmabuf-unstable-v1/wl_buffer_dmabuf.c',
-	x+'linux-explicit-synchronization-v1/zwp_linux_explicit_synchronization_v1.c',
-	x+'linux-explicit-synchronization-v1/zwp_linux_surface_synchronization_v1.c',
-	x+'fullscreen-shell-unstable-v1/zwp_fullscreen_shell_v1.c',
-	x+'server-decoration/org_kde_kwin_server_decoration_manager.c',
-	x+'server-decoration/org_kde_kwin_server_decoration.c']
-src += ['legacy_wl_drm.c', 'globals.c', 'main.c']
+src =  [b+'bufmgr_'+bufmgr+'.c', b+'dev.c', b+'input.c', b+'screen.c',
+        b+'vulkan.c']
+src += [u+'my_drm_handle_event.c']
+src += ['legacy_wl_drm.c', 'main.c']
 
-wayland_protocols = dependency('wayland-protocols')
-protocols_path = wayland_protocols.get_pkgconfig_variable('pkgdatadir')
-
-wayland_scanner_dep = dependency('wayland-scanner', required: false, native: true)
-if wayland_scanner_dep.found()
-	wayland_scanner = find_program(
-		wayland_scanner_dep.get_pkgconfig_variable('wayland_scanner'),
-		native: true,
-	)
-else
-	wayland_scanner = find_program('wayland-scanner', native: true)
-endif
-
-protocols = [
-	'stable/xdg-shell/xdg-shell.xml',
-	'unstable/fullscreen-shell/fullscreen-shell-unstable-v1.xml',
-	'unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml',
-	'unstable/linux-explicit-synchronization/linux-explicit-synchronization-unstable-v1.xml'
-]
-
-gen = []
-
-foreach p : protocols
-	gen += custom_target(
-		p.underscorify()+'_server_protocol',
-		output: '@BASENAME@-server-protocol.h',
-		input: protocols_path/p,
-		command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@']
-	)
-	gen += custom_target(
-		p.underscorify()+'_code',
-		output: '@BASENAME@-code.c',
-		input: protocols_path/p,
-		command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@']
-	)
-endforeach
-
-gen += custom_target(
-	'server_decoration_xml_server_protocol',
-	output: '@BASENAME@-server-protocol.h',
-	input: 'server-decoration.xml',
-	command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@']
-)
-gen += custom_target(
-	'server_decoration_xml_code',
-	output: '@BASENAME@-code.c',
-	input: 'server-decoration.xml',
-	command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@']
-)
-
-dep = [wayland_protocols]
-dep += dependency('wayland-server')
+dep = [wl_dep]
+dep += dependency('egl') # required for legacy wl_drm
+dep += dependency('gbm') # required by egl
 dep += dependency('libdrm')
-dep += dependency('libdrm_intel', required : bufmgr == 'intel')
+dep += dependency('libdrm_intel', required: bufmgr == 'intel')
+dep += dependency('libudev')
 dep += dependency('vulkan')
 dep += dependency('xkbcommon')
-dep += dependency('libudev')
-dep += dependency('gbm') # required for legacy wl_drm
-dep += dependency('egl') # required for legacy wl_drm
 
 inc = include_directories('include')
 
-executable('swvkc', [src, gen], dependencies : dep, include_directories : inc, install : true)
+executable('swvkc', src, dependencies: dep, include_directories: inc,
+           install: true)
 
 summary = [
 	'',
