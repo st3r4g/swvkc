@@ -1,6 +1,8 @@
 #ifndef MYXDGTOPLEVEL_H
 #define MYXDGTOPLEVEL_H
 
+#include <xdg-shell-server-protocol.h>
+
 struct xdg_toplevel_data;
 
 typedef void (*xdg_toplevel_init_t)(struct xdg_toplevel_data *, void *);

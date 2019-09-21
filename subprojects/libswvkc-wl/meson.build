@@ -78,4 +78,4 @@ inc = include_directories('include')
 libswvkc_wl = static_library('swvkc-wl', [src, gen], dependencies: dep,
                              include_directories: inc)
 libswvkc_wl_dep = declare_dependency(include_directories: inc,
-                                     link_with: libswvkc_wl)
+                                     link_with: libswvkc_wl, sources: gen)
