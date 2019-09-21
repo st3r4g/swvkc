@@ -6,15 +6,8 @@ add_project_arguments('-pedantic-errors', '-Wno-unused-parameter',
 wl_proj = subproject('libswvkc-wl')
 wl_dep = wl_proj.get_variable('libswvkc_wl_dep')
 
-b = 'backend/'
-u = 'util/'
-
-bufmgr = get_option('bufmgr')
-
-src =  [b+'bufmgr_'+bufmgr+'.c', b+'dev.c', b+'input.c', b+'screen.c',
-        b+'vulkan.c']
-src += [u+'my_drm_handle_event.c']
-src += ['legacy_wl_drm.c', 'swvkc.c', 'main.c']
+src = []
+subdir('src')
 
 dep = [wl_dep]
 dep += dependency('egl') # required for legacy wl_drm
