@@ -14,7 +14,7 @@ bufmgr = get_option('bufmgr')
 src =  [b+'bufmgr_'+bufmgr+'.c', b+'dev.c', b+'input.c', b+'screen.c',
         b+'vulkan.c']
 src += [u+'my_drm_handle_event.c']
-src += ['legacy_wl_drm.c', 'main.c']
+src += ['legacy_wl_drm.c', 'swvkc.c', 'main.c']
 
 dep = [wl_dep]
 dep += dependency('egl') # required for legacy wl_drm
