@@ -14,6 +14,10 @@ struct server {
 	struct wl_list lss_list;
 };
 
+int swvkc_initialize();
+void swvkc_run();
+void swvkc_terminate();
+
 void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip);
 int gpu_ev_handler(int fd, uint32_t mask, void *data);
