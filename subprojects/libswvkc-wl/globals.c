@@ -40,14 +40,13 @@ extern void keyboard_init_notify(struct keyboard *keyboard, void *user_data);
 
 static void compositor_bind(struct wl_client *client, void *data, uint32_t
 version, uint32_t id) {
-	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&wl_compositor_interface, version, id);
 	struct surface_events surface_events = {
 		.map = surface_map_notify,
 		.unmap = surface_unmap_notify,
 		.contents_update = surface_contents_update_notify,
-		.user_data = server
+		.user_data = data
 	};
 	compositor_new(resource, surface_events);
 }
@@ -62,12 +61,11 @@ uint32_t version, uint32_t id) {
 
 static void seat_bind(struct wl_client *client, void *data, uint32_t version,
 uint32_t id) {
-	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&wl_seat_interface, version, id);
 	struct keyboard_events keyboard_events = {
 		.init = keyboard_init_notify,
-		.user_data = server
+		.user_data = data
 	};
 	seat_new(resource, keyboard_events);
 }
@@ -88,32 +86,29 @@ uint32_t id) {
 
 static void xdg_wm_base_bind(struct wl_client *client, void *data, uint32_t
 version, uint32_t id) {
-	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&xdg_wm_base_interface, version, id);
 	struct xdg_toplevel_events xdg_toplevel_events = {
 		.init = xdg_toplevel_init_notify,
-		.user_data = server
+		.user_data = data
 	};
-	xdg_wm_base_new(resource, server, xdg_toplevel_events);
+	xdg_wm_base_new(resource, xdg_toplevel_events);
 }
 
 static void zwp_linux_dmabuf_v1_bind(struct wl_client *client, void *data, uint32_t
 version, uint32_t id) {
-	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&zwp_linux_dmabuf_v1_interface, version, id);
 	struct buffer_dmabuf_events buffer_dmabuf_events = {
 		.create = buffer_dmabuf_create_notify,
 		.destroy = buffer_dmabuf_destroy_notify,
-		.user_data = server
+		.user_data = data
 	};
 	zwp_linux_dmabuf_v1_new(resource, buffer_dmabuf_events);
 }
 
 static void zwp_linux_explicit_synchronization_v1_bind(struct wl_client *client,
 void *data, uint32_t version, uint32_t id) {
-//	struct server *server = data;
 	struct wl_resource *resource = wl_resource_create(client,
 	&zwp_linux_explicit_synchronization_v1_interface, version, id);
 	linux_explicit_synchronization_new(resource);
@@ -146,23 +141,23 @@ static bool global_filter(const struct wl_client *client, const struct wl_global
 	return true;
 }
 
-void create_globals(struct server *server, struct wl_display *D, bool dmabuf) {
-	wl_global_create(D, &wl_compositor_interface, 4, server,
+void create_globals(struct wl_display *D, bool dmabuf, void *user_data) {
+	wl_global_create(D, &wl_compositor_interface, 4, user_data,
 	compositor_bind);
 	wl_global_create(D, &wl_subcompositor_interface, 1, 0,
 	subcompositor_bind);
 	wl_global_create(D, &wl_data_device_manager_interface, 1, 0,
 	data_device_manager_bind);
-	wl_global_create(D, &wl_seat_interface, 5, server, seat_bind);
+	wl_global_create(D, &wl_seat_interface, 5, user_data, seat_bind);
 	wl_global_create(D, &wl_output_interface, 3, 0, output_bind);
 	wl_display_init_shm(D);
-	wl_global_create(D, &xdg_wm_base_interface, 1, server,
+	wl_global_create(D, &xdg_wm_base_interface, 1, user_data,
 	xdg_wm_base_bind);
 	if (dmabuf)
-		wl_global_create(D, &zwp_linux_dmabuf_v1_interface, 3, server,
+		wl_global_create(D, &zwp_linux_dmabuf_v1_interface, 3, user_data,
 		 zwp_linux_dmabuf_v1_bind);
 	wl_global_create(D, &zwp_linux_explicit_synchronization_v1_interface, 1,
-	server, zwp_linux_explicit_synchronization_v1_bind);
+	user_data, zwp_linux_explicit_synchronization_v1_bind);
 	wl_global_create(D, &zwp_fullscreen_shell_v1_interface, 1, NULL,
 	zwp_fullscreen_shell_v1_bind);
 	wl_global_create(D, &org_kde_kwin_server_decoration_manager_interface,

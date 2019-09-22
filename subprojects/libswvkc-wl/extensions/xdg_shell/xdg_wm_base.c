@@ -73,10 +73,9 @@ static const struct xdg_wm_base_interface impl = {
 	.pong = pong
 };
 
-struct xdg_wm_base *xdg_wm_base_new(struct wl_resource *resource, struct server
-*server, struct xdg_toplevel_events xdg_toplevel_events) {
+struct xdg_wm_base *xdg_wm_base_new(struct wl_resource *resource, struct
+xdg_toplevel_events xdg_toplevel_events) {
 	struct xdg_wm_base *xdg_wm_base = calloc(1, sizeof(struct xdg_wm_base));
-	xdg_wm_base->server = server;
 	xdg_wm_base->xdg_toplevel_events = xdg_toplevel_events;
 	wl_resource_set_implementation(resource, &impl, xdg_wm_base, 0);
 	return xdg_wm_base;

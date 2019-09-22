@@ -59,7 +59,12 @@ From https://www.collabora.com/news-and-blog/blog/2017/01/26/mainline-explicit-f
 ## TODO
 * Code cleanup
 * Investigate correct memory management and synchronization
-* Direct scanout
+* clipboard: maybe we can get away with not implementing wlr-data-control by
+  adding special behaviour for `wl-clipboard`, which seems to have become a
+  standard tool (e.g. it is used by `neovim`). The mechanism to allow such a
+  behavior should be based on something that a malicious program can't easily
+  exploit to access the keyboard: maybe we can query /proc/pid/exe to match it
+  against /usr/bin/wl-{copy,paste}
 
 ## ISSUES/NOTES
 * Many clients (`kitty`, `alacritty`, ...) still depend on the presence of the

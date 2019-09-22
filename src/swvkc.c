@@ -27,6 +27,19 @@
 #include <string.h>
 #include <strings.h>
 
+struct server {
+	struct wl_display *display;
+
+	struct input *input;
+	struct screen *screen;
+/*
+ * Temporary way to manage surfaces, it should evolve into a tree
+ */
+	struct wl_list mapped_surfaces_list;
+	struct wl_list bufres_list; // Buffers that have been scanout
+	struct wl_list lss_list;
+};
+
 struct surface_node {
 	struct surface *surface;
 	struct surface *child; // XXX: temporary
@@ -44,6 +57,11 @@ struct lss_node {
 	int out_fence_fd;
 	struct wl_list link;
 };
+
+void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
+tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip);
+int gpu_ev_handler(int fd, uint32_t mask, void *data);
+int key_ev_handler(int key_fd, uint32_t mask, void *data);
 
 static struct server *swvkc; //TODO
 int swvkc_initialize() {
@@ -96,7 +114,7 @@ int swvkc_initialize() {
 	setenv("WAYLAND_DISPLAY", socket, 0);
 	setenv("QT_QPA_PLATFORM", "wayland-egl", 0);
 
-	create_globals(server, D, dmabuf);
+	create_globals(D, dmabuf, server);
 /*
  * Creates the `wl_drm` global required for authenticating clients to DRM
  */

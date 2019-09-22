@@ -32,13 +32,14 @@ void free_keyboard_devices(struct key_dev *key_devs, int count) {
 }
 
 int create_file(off_t size) {
-	static const char template[] = "/compositor-XXXXXX";
+	static const char template[] = "/swvkc-XXXXXX";
 	const char *path;
 	char *name;
 	int ret;
 
 	path = getenv("XDG_RUNTIME_DIR");
 	if (!path) {
+		errlog("XDG_RUNTIME_DIR not set");
 		errno = ENOENT;
 		return -1;
 	}
