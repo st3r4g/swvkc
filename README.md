@@ -64,7 +64,7 @@ Some considerations:
 ## Building
 After installing `meson`, run the command:
 ```
-$ meson build
+$ meson -Dbuildtype=release -Db_lto=true build
 ```
 and install any missing dependency that is reported. Then run:
 ```
