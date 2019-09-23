@@ -207,6 +207,10 @@ void request_vblank(struct screen *screen) {
 
 int drm_setup(struct screen *S) {
 	char *devpath = boot_gpu_devpath();
+	if (!devpath) {
+		fprintf(stderr, "No suitable DRM device found");
+		return -1;
+	}
 	S->gpu_fd = open(devpath, O_RDWR | O_CLOEXEC);
 	if (S->gpu_fd < 0) {
 		fprintf(stderr, "open %s: %s\n", devpath, strerror(errno));

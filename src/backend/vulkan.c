@@ -220,7 +220,7 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 	};
 
 	uint32_t enabled_ext_count = 0;
-	const char **enabled_ext;
+	const char **enabled_ext = 0;
 
 	if (*dmabuf_mod) {
 		enabled_ext_count = sizeof(enabled_ext_dmabuf_mod)/sizeof(char*);

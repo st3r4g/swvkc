@@ -14,7 +14,7 @@ int my_drmHandleEvent(int fd, drmEventContextPtr evctx)
 	char buffer[1024];
 	int len, i;
 	struct drm_event *e;
-	struct drm_event_vblank *vblank;
+	struct drm_event_vblank *vblank = 0; //silence a warning in release build
 	struct drm_event_crtc_sequence *seq;
 	void *user_data;
 

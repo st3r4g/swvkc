@@ -7,7 +7,7 @@
 #include <string.h>
 
 char *boot_gpu_devpath() {
-	char *devpath;
+	char *devpath = 0;
 	struct udev *udev = udev_new();
 	struct udev_enumerate *enu = udev_enumerate_new(udev);
 	udev_enumerate_add_match_sysattr(enu, "boot_vga", "1");
