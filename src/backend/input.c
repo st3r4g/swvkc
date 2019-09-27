@@ -180,7 +180,7 @@ _Bool input_handle_event(struct input *S, struct aaa *aaa) {
 		XKB_STATE_MODS_LATCHED);
 		aaa->mods_locked = xkb_state_serialize_mods(S->state,
 		XKB_STATE_MODS_LOCKED);
-		aaa->group = xkb_state_serialize_mods(S->state,
+		aaa->group = xkb_state_serialize_layout(S->state,
 		XKB_STATE_LAYOUT_EFFECTIVE);
 
 		return 1;
