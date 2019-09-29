@@ -9,9 +9,9 @@ u = 'util/'
 x = 'extensions/'
 
 src =  [c+'compositor.c', c+'data_device.c', c+'data_device_manager.c',
-        c+'data_source.c', c+'keyboard.c', c+'output.c', c+'wl_pointer.c',
-        c+'region.c', c+'seat.c', c+'wl_subcompositor.c', c+'subsurface.c',
-        c+'wl_surface.c']
+        c+'data_offer.c', c+'data_source.c', c+'keyboard.c', c+'output.c',
+        c+'wl_pointer.c', c+'region.c', c+'seat.c', c+'wl_subcompositor.c',
+        c+'subsurface.c', c+'wl_surface.c']
 src += [u+'algebra.c', u+'log.c', u+'util.c']
 src += [x+'xdg_shell/xdg_wm_base.c',
         x+'xdg_shell/xdg_positioner.c', x+'xdg_shell/xdg_surface.c',
