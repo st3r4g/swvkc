@@ -54,10 +54,9 @@ version, uint32_t id) {
 static void data_device_manager_bind(struct wl_client *client, void *data,
 uint32_t version, uint32_t id) {
 	struct wl_resource *resource = wl_resource_create(client,
-	&wl_compositor_interface, version, id);
+	&wl_data_device_manager_interface, version, id);
 	data_device_manager_new(resource);
 }
-
 
 static void seat_bind(struct wl_client *client, void *data, uint32_t version,
 uint32_t id) {
@@ -146,7 +145,7 @@ void create_globals(struct wl_display *D, bool dmabuf, void *user_data) {
 	compositor_bind);
 	wl_global_create(D, &wl_subcompositor_interface, 1, 0,
 	subcompositor_bind);
-	wl_global_create(D, &wl_data_device_manager_interface, 1, 0,
+	wl_global_create(D, &wl_data_device_manager_interface, 3, 0,
 	data_device_manager_bind);
 	wl_global_create(D, &wl_seat_interface, 5, user_data, seat_bind);
 	wl_global_create(D, &wl_output_interface, 3, 0, output_bind);

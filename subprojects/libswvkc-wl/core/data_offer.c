@@ -2,10 +2,7 @@
 #include <stdlib.h>
 #include <wayland-server-protocol.h>
 
-struct mime_node {
-	const char *mime_type;
-	struct wl_list link;
-};
+#include <core/data_source.h>
 
 static void accept(struct wl_client *client, struct wl_resource *resource,
 uint32_t serial, const char *mime_type) {
@@ -42,11 +39,7 @@ static const struct wl_data_offer_interface impl = {
 void data_offer_new(struct wl_resource *resource, struct wl_resource *source) {
 	wl_resource_set_implementation(resource, &impl, source, 0);
 	struct wl_list *list = wl_resource_get_user_data(source);
-	struct mime_node *node, *tmp;
-	wl_list_for_each_reverse_safe(node, tmp, list, link) {
+	struct mime_node *node;
+	wl_list_for_each_reverse(node, list, link)
 		wl_data_offer_send_offer(resource, node->mime_type);
-		wl_list_remove(&node->link);
-//		free(node->mime_type);
-		free(node);
-	}
 }
