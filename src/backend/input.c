@@ -5,6 +5,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,7 @@
 
 struct input {
 	int key_fd;
+	int poi_fd;
 	int keymap_fd;
 	unsigned int keymap_size;
 
@@ -77,9 +79,9 @@ int create_file(off_t size) {
 
 struct input *input_setup() {
 	printf("├─ INPUT (Linux Input Subsystem)\n");
-	int count;
+	int count, n;
 	struct key_dev *key_devs = find_keyboard_devices(&count);
-	int n;
+
 	if (count > 1) {
 		printf("Found multiple keyboards:\n");
 		for (int i=0; i<count; i++) {
@@ -91,7 +93,22 @@ struct input *input_setup() {
 		// Handle count == 0
 		n = 0;
 	}
-	boxlog("Device node: %s", key_devs[n].devnode);
+	boxlog("Keyboard device node: %s", key_devs[n].devnode);
+
+	int count_, n_;
+	struct key_dev *key_devs_ = find_pointer_devices(&count_);
+	if (count_ > 1) {
+		printf("Found multiple pointers:\n");
+		for (int i=0; i<count_; i++) {
+			printf("(%d) [%s]\n", i, key_devs_[i].devnode);
+		}
+		printf("Choose one: ");
+		scanf("%d", &n_);
+	} else {
+		// Handle count == 0
+		n_ = 0;
+	}
+	boxlog("Pointer device node: %s", key_devs_[n].devnode);
 
 	struct input *S = calloc(1, sizeof(struct input));
 	S->key_fd = open(key_devs[n].devnode, O_RDONLY | O_CLOEXEC);
@@ -99,7 +116,13 @@ struct input *input_setup() {
 		fprintf(stderr, "open %s: %s\n", key_devs[n].devnode, strerror(errno));
 		return 0;
 	}
+	S->poi_fd = open(key_devs_[n_].devnode, O_RDONLY | O_CLOEXEC);
+	if (S->poi_fd < 0) {
+		fprintf(stderr, "open %s: %s\n", key_devs_[n_].devnode, strerror(errno));
+		return 0;
+	}
 	free_keyboard_devices(key_devs, count);
+	free_keyboard_devices(key_devs_, count_);
 
 	ioctl(S->key_fd, EVIOCGRAB, 1);
 
@@ -151,6 +174,10 @@ int input_get_key_fd(struct input *S) {
 	return S->key_fd;
 }
 
+int input_get_poi_fd(struct input *S) {
+	return S->poi_fd;
+}
+
 unsigned int input_get_keymap_fd(struct input *S) {
 	return S->keymap_fd;
 }
@@ -159,11 +186,16 @@ unsigned int input_get_keymap_size(struct input *S) {
 	return S->keymap_size;
 }
 
-_Bool input_handle_event(struct input *S, struct aaa *aaa) {
-	struct input_event ev;
-	read(S->key_fd, &ev, sizeof(struct input_event));
+bool motion_x = false;
+bool motion_y = false;
+int32_t abs_x = 0;
+int32_t abs_y = 0;
 
-	if (ev.type == EV_KEY) {
+int input_handle_event(struct input *S, struct aaa *aaa, int fd) {
+	struct input_event ev;
+	read(fd, &ev, sizeof(struct input_event));
+
+	if (ev.type == EV_KEY && fd == input_get_key_fd(S)) { // super bad
 		if (ev.value == 2)
 			return 0;
 		aaa->key = ev.code;
@@ -184,6 +216,25 @@ _Bool input_handle_event(struct input *S, struct aaa *aaa) {
 		XKB_STATE_LAYOUT_EFFECTIVE);
 
 		return 1;
+	} else if (ev.type == EV_KEY && ev.code == BTN_TOUCH && ev.value == 0) {
+		motion_x = false, motion_y = false;
+		return 2;
+	} else if (ev.type == EV_ABS && ev.code == ABS_X) {
+		if (motion_x)
+			pointer.x += (ev.value - abs_x)/2;
+		else
+			motion_x = true;
+		abs_x = ev.value;
+		return 2;
+	} else if (ev.type == EV_ABS && ev.code == ABS_Y) {
+		if (motion_y)
+			pointer.y += (ev.value - abs_y)/2;
+		else
+			motion_y = true;
+		abs_y = ev.value;
+		return 2;
+	} else if (ev.type == EV_SYN && fd == input_get_poi_fd(S)) {
+		return 3;
 	} else
 		return 0;
 }
@@ -193,5 +244,6 @@ void input_release(struct input *S) {
 	xkb_keymap_unref(S->keymap);
 	xkb_context_unref(S->context);
 	close(S->key_fd);
+	close(S->poi_fd);
 	free(S);
 }

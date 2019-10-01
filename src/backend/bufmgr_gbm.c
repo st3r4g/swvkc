@@ -46,7 +46,7 @@ const char *bufmgr_get_name(struct bufmgr *self) {
 }
 
 struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height,
-bool linear) {
+bool linear, int format) {
 	if (!self) {
 		fprintf(stderr, "bufmgr_buffer_create: invalid bufmgr\n");
 		return NULL;
@@ -63,7 +63,7 @@ bool linear) {
 	}
 
 	struct gbm_bo *gbm_bo = gbm_bo_create(self->gbm_device, width,
-	 height, GBM_BO_FORMAT_XRGB8888, flags);
+	 height, format == 0 ? GBM_BO_FORMAT_XRGB8888 : GBM_BO_FORMAT_ARGB8888, flags);
 
 /*	uint64_t modifier = I915_FORMAT_MOD_X_TILED;
 	S->gbm_bo = gbm_bo_create_with_modifiers(S->gbm_device,

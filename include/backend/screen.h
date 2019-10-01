@@ -25,6 +25,7 @@ struct gbm_device *screen_get_gbm_device(struct screen *);
 struct box screen_get_dimensions(struct screen *S);
 struct buffer *screen_get_back_buffer(struct screen *screen);
 struct buffer *screen_get_front_buffer(struct screen *screen);
+struct buffer *screen_get_cursor_buffer(struct screen *screen);
 const char *screen_get_bufmgr_impl(struct screen *screen);
 bool screen_is_overlay_supported(struct screen *S);
 void screen_post_direct(struct screen *, uint32_t width, uint32_t height,
@@ -46,6 +47,7 @@ void screen_fb_schedule_destroy(struct screen *screen, struct fb *fb);
 void client_buffer_on_primary(struct screen *S, struct fb *fb, int in_fence_fd);
 void client_buffer_on_overlay(struct screen *S, struct fb *fb, uint32_t width,
 uint32_t height, int in_fence_fd);
+void cursor_on_cursor(struct screen *s, int x, int y);
 
 void screen_release(struct screen *);
 

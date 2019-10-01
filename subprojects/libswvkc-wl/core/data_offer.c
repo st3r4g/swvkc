@@ -1,5 +1,6 @@
 #include <inttypes.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <wayland-server-protocol.h>
 
 #include <core/data_source.h>
@@ -13,6 +14,7 @@ static void receive(struct wl_client *client, struct wl_resource *resource,
 const char *mime_type, int32_t fd) {
 	struct wl_resource *source = wl_resource_get_user_data(resource);
 	wl_data_source_send_send(source, mime_type, fd);
+	close(fd);
 }
 
 static void destroy(struct wl_client *client, struct wl_resource *resource) {

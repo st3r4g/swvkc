@@ -53,7 +53,7 @@ const char *bufmgr_get_name(struct bufmgr *self) {
 }
 
 struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height,
-bool linear) {
+bool linear, int format) {
 	int bpp = 32;
 	uint32_t tiling = linear ? I915_TILING_NONE : I915_TILING_X;
 	long unsigned int stride;
@@ -72,7 +72,7 @@ bool linear) {
 /*
  * I can choose a format with bpp = 32
  */
-	buffer->format = DRM_FORMAT_XRGB8888;
+	buffer->format = format == 0 ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_ARGB8888;
 	buffer->bo_count = 1;
 	buffer->bos = malloc(sizeof(struct drm_intel_bo *));
 	buffer->bos[0] = bo;

@@ -813,3 +813,61 @@ void vulkan_create_screen_image(struct buffer *back, struct buffer *front) {
 	}
 //	vkResetFences(device, 1, &fence);
 }
+
+VkImage cursor_image = VK_NULL_HANDLE;
+
+void vulkan_create_cursor_image(struct buffer *buffer) {
+	int fd = buffer_get_fd(buffer);
+	uint32_t width = buffer_get_width(buffer);
+	uint32_t height = buffer_get_height(buffer);
+	uint32_t stride = buffer_get_stride(buffer, 0);
+	uint64_t mod = buffer_get_modifier(buffer);
+
+	cursor_image = create_image(width, height, stride, mod, device);
+
+/*	VkMemoryRequirements2 memreq2; XXX: useless stuff
+	VkImageMemoryRequirementsInfo2 info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2,
+		.pNext = NULL,
+		.image = screen_image[i]
+	};
+	vkGetImageMemoryRequirements2(device, &info, &memreq2);
+	VkMemoryRequirements memreq;
+	vkGetImageMemoryRequirements(device, screen_image[i], &memreq);
+
+	errlog("MEMREQ.size: %d, real size: %d", memreq.size, stride*height);*/
+	VkDeviceMemory screen_memory = import_memory(fd, stride*height, device);
+	bind_image_memory(device, cursor_image, screen_memory);
+}
+
+void vulkan_render_shm_buffer_cursor(uint32_t width, uint32_t height, uint32_t stride,
+uint32_t format, uint8_t *data) {
+	uint32_t buffer_size = stride*height;
+	VkDeviceMemory mem;
+	VkBuffer buffer = create_buffer(buffer_size, &mem, device);
+	void *dest;
+	vkMapMemory(device, mem, 0, buffer_size, 0, &dest);
+	memcpy(dest, data, (size_t) buffer_size);
+	vkUnmapMemory(device, mem);
+
+	commands[1] = record_command_copy3(device, command_pool, buffer,
+	cursor_image, width, height);
+	VkSubmitInfo submitInfo = {
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = commands+1
+	};
+	VkFence fence;
+	VkFenceCreateInfo info = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
+	};
+	vkCreateFence(device, &info, NULL, &fence);
+	vkQueueSubmit(queue, 1, &submitInfo, fence);
+	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+	vkDestroyFence(device, fence, NULL);
+
+	vkDestroyBuffer(device, buffer, NULL);
+	vkFreeMemory(device, mem, NULL);
+	vkFreeCommandBuffers(device, command_pool, 1, commands+1);
+}
+

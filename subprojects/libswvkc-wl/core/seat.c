@@ -9,7 +9,7 @@
 static void get_pointer(struct wl_client *client, struct wl_resource *resource,
 uint32_t id) {
 	struct wl_resource *pointer_resource = wl_resource_create(client,
-	&wl_pointer_interface, 3, id);
+	&wl_pointer_interface, wl_resource_get_version(resource), id);
 	wl_pointer_new(pointer_resource);
 }
 
@@ -45,7 +45,8 @@ keyboard_events keyboard_events) {
 	wl_resource_set_implementation(resource, &impl, seat, seat_free);
 
 	if (wl_resource_get_version(resource) >= WL_SEAT_CAPABILITIES_SINCE_VERSION)
-		wl_seat_send_capabilities(resource, WL_SEAT_CAPABILITY_KEYBOARD);
+		wl_seat_send_capabilities(resource, WL_SEAT_CAPABILITY_KEYBOARD
+		 | WL_SEAT_CAPABILITY_POINTER);
 	if (wl_resource_get_version(resource) >= WL_SEAT_NAME_SINCE_VERSION)
 		wl_seat_send_name(resource, "seat0");
 

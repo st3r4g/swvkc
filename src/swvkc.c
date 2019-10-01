@@ -101,6 +101,7 @@ int swvkc_initialize() {
 
 	vulkan_create_screen_image(screen_get_back_buffer(server->screen),
 	                           screen_get_front_buffer(server->screen));
+	vulkan_create_cursor_image(screen_get_cursor_buffer(server->screen));
 
 	server->display = wl_display_create();
 	struct wl_display *D = server->display;
@@ -124,6 +125,8 @@ int swvkc_initialize() {
 	wl_event_loop_add_fd(el, screen_get_gpu_fd(server->screen),
 	WL_EVENT_READABLE, gpu_ev_handler, server);
 	wl_event_loop_add_fd(el, input_get_key_fd(server->input),
+	WL_EVENT_READABLE, key_ev_handler, server);
+	wl_event_loop_add_fd(el, input_get_poi_fd(server->input),
 	WL_EVENT_READABLE, key_ev_handler, server);
 
 //	screen_post(server->screen, 0);
@@ -195,12 +198,28 @@ void shmbuf(struct wl_resource *buffer) {
 	wl_buffer_send_release(buffer);
 }
 
+void shmbuf_cursor(struct wl_resource *buffer) {
+	struct wl_shm_buffer *shm_buffer = wl_shm_buffer_get(buffer);
+	uint32_t width = wl_shm_buffer_get_width(shm_buffer);
+	uint32_t height = wl_shm_buffer_get_height(shm_buffer);
+	uint32_t stride = wl_shm_buffer_get_stride(shm_buffer);
+	uint32_t format = wl_shm_buffer_get_format(shm_buffer);
+	uint8_t *data = wl_shm_buffer_get_data(shm_buffer);
+	wl_shm_buffer_begin_access(shm_buffer);
+	vulkan_render_shm_buffer_cursor(width, height, stride, format, data);
+	wl_shm_buffer_end_access(shm_buffer);
+	wl_buffer_send_release(buffer);
+}
+
 /*
  * Handle events produced by Wayland objects: `object`_`event`_notify
  */
 
 void surface_map_notify(struct surface *surface, void *user_data) {
 	struct server *server = user_data;
+
+	if (surface->role == ROLE_CURSOR)
+		return;
 
 	if (surface->role == ROLE_SUBSURFACE) {
 		struct subsurface *subsurface = surface->role_object;
@@ -229,6 +248,14 @@ void surface_map_notify(struct surface *surface, void *user_data) {
 	keyboard = util_wl_client_get_keyboard(client);
 	if (keyboard)
 		wl_keyboard_send_enter(keyboard, 0, surface->resource, &array);
+	struct wl_resource *pointer = NULL;
+	pointer = util_wl_client_get_pointer(client);
+	if (pointer) {
+		wl_pointer_send_enter(pointer, 0, surface->resource,
+		 wl_fixed_from_int(0), wl_fixed_from_int(0));
+		if (wl_resource_get_version(pointer) >= WL_POINTER_FRAME_SINCE_VERSION)
+		wl_pointer_send_frame(pointer);
+	}
 
 	struct surface_node *node = malloc(sizeof(struct surface_node));
 	node->surface = surface;
@@ -239,6 +266,9 @@ void surface_map_notify(struct surface *surface, void *user_data) {
 
 void surface_unmap_notify(struct surface *surface, void *user_data) {
 	struct server *server = user_data;
+
+	if (surface->role == ROLE_CURSOR)
+		return;
 
 	if (surface->role == ROLE_SUBSURFACE) {
 		struct subsurface *subsurface = surface->role_object;
@@ -281,6 +311,12 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 	if (!buffer)
 		return;
 
+	if (surface->role == ROLE_CURSOR) {
+		shmbuf_cursor(buffer);
+		errlog("cursor update");
+		return;
+	}
+
 	if (screen_page_flip_is_pending(server->screen)) {
 		errlog("WARNING: contents update discarded (page flip is pending)");
 		wl_buffer_send_release(buffer);
@@ -311,6 +347,8 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 			shmbuf(buffer);
 			screen_main(screen);
 		}
+
+		cursor_on_cursor(screen, pointer.x, pointer.y);
 
 		int out_fence_fd = -1;
 		bool with_out_fence = (bool)extension_resource;
@@ -468,13 +506,14 @@ int gpu_ev_handler(int fd, uint32_t mask, void *data) {
 	return 0;
 }
 
-int key_ev_handler(int key_fd, uint32_t mask, void *data) {
+int key_ev_handler(int fd, uint32_t mask, void *data) {
 	static bool steal = false;
 	static int i = 0;
 	static char name[64] = {'\0'};
 	struct server *server = data;
 	struct aaa aaa;
-	if (input_handle_event(server->input, &aaa)) {
+	int u = input_handle_event(server->input, &aaa, fd);
+	if (u == 1) {
 		if (aaa.key == 59) { //F1
 			wl_display_terminate(server->display);
 			return 0;

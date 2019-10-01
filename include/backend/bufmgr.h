@@ -6,7 +6,7 @@ void bufmgr_destroy(struct bufmgr *self);
 const char *bufmgr_get_name(struct bufmgr *self);
 
 struct buffer *bufmgr_buffer_create(struct bufmgr *self, int width, int height,
-bool linear);
+bool linear, int format);
 //struct buffer *bufmgr_buffer_import_from_dmabuf(struct bufmgr *self, int
 //num_fds, int32_t *dmabuf_fds);
 struct buffer *bufmgr_buffer_import_from_dmabuf(struct bufmgr *self, int

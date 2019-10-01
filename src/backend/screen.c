@@ -62,11 +62,14 @@ struct fb_node {
 	struct wl_list link;
 };
 
+struct fb *cursor; //TODO: remove
+
 struct screen {
 	// DRM
 	int gpu_fd;
 	uint32_t plane_id;
 	uint32_t overlay_plane_id;
+	uint32_t cursor_plane_id;
 	uint32_t crtc_id;
 	uint32_t props_plane_fb_id;
 	uint32_t old_fb_id;
@@ -78,6 +81,7 @@ struct screen {
 	struct bufmgr *bufmgr;
 	struct fb *back; // The main framebuffer -- back
 	struct fb *front; // The main framebuffer -- front
+	struct fb *cursor;
 
 	struct wl_list fb_destroy_list;
 
@@ -92,7 +96,7 @@ struct screen {
 
 int drm_setup(struct screen *);
 struct fb *screen_fb_create_main(struct screen *screen, int width, int height,
-bool linear);
+bool linear, bool no_alpha);
 void screen_fb_destroy(struct screen *screen, struct fb *fb);
 const char *conn_get_name(uint32_t type_id);
 
@@ -111,9 +115,12 @@ unsigned int, void*, bool), void *user_data, bool dmabuf_mod) {
 	screen->bufmgr = bufmgr_create(screen->gpu_fd);
 	struct box screen_size = screen_get_dimensions(screen);
 	screen->back = screen_fb_create_main(screen, screen_size.width,
-	 screen_size.height, !dmabuf_mod);
+	 screen_size.height, !dmabuf_mod, true);
 	screen->front = screen_fb_create_main(screen, screen_size.width,
-	 screen_size.height, !dmabuf_mod);
+	 screen_size.height, !dmabuf_mod, true);
+	screen->cursor = screen_fb_create_main(screen, 64, 64, true,
+	 false);
+	cursor = screen->cursor; // TODO remove
 
 	return screen;
 }
@@ -168,6 +175,7 @@ void planes(struct screen *S, uint32_t crtc_id) {
 					S->overlay_plane_id = plane->plane_id;
 					n_overlay++;
 				} else if (obj_props->prop_values[j] == DRM_PLANE_TYPE_CURSOR) {
+					S->cursor_plane_id = plane->plane_id;
 					n_cursor++;
 				}
 			}
@@ -371,6 +379,21 @@ bool screen_page_flip_is_pending(struct screen *self) {
 	return self->pending_page_flip;
 }
 
+void cursor_on_cursor(struct screen *S, int x, int y) {
+	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.src_x, 0 << 16); // SRC_X
+	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.src_y, 0 << 16); // SRC_Y
+	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.src_w, 64 << 16); // SRC_W
+	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.src_h, 64 << 16); // SRC_H
+	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.crtc_x, x); // CRTC_X
+	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.crtc_y, y); // CRTC_Y
+	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.crtc_w, 64); // CRTC_W
+	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.crtc_h, 64); // CRTC_H
+	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.crtc_id, S->crtc_id); // CRTC_ID
+
+	if (drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props_plane_fb_id, cursor->id) < 0)
+		fprintf(stderr, "atomic add property failed\n");
+}
+
 void client_buffer_on_primary(struct screen *S, struct fb *fb, int in_fence_fd) {
 	assert(!S->req);
 
@@ -455,6 +478,10 @@ struct buffer *screen_get_front_buffer(struct screen *screen) {
 	return screen->front->buffer;
 }
 
+struct buffer *screen_get_cursor_buffer(struct screen *screen) {
+	return screen->cursor->buffer;
+}
+
 bool screen_is_overlay_supported(struct screen *S) {
 	return S->overlay_plane_id > 0;
 }
@@ -462,7 +489,8 @@ bool screen_is_overlay_supported(struct screen *S) {
 /*
  * DRM Framebuffer manager: private code
  */
-struct fb *screen_fb_create(struct screen *screen, struct buffer *buffer) {
+struct fb *screen_fb_create(struct screen *screen, struct buffer *buffer, bool
+no_alpha) {
 	uint32_t width = buffer_get_width(buffer);
 	uint32_t height = buffer_get_height(buffer);
 	uint32_t format = buffer_get_format(buffer);
@@ -478,6 +506,7 @@ struct fb *screen_fb_create(struct screen *screen, struct buffer *buffer) {
 		modifier[i] = buffer_get_modifier(buffer);
 	}
 
+	if (no_alpha)
 	// XRGB8888 is more likely to be supported
 	format = format == DRM_FORMAT_ARGB8888 ? DRM_FORMAT_XRGB8888 : format;
 
@@ -505,12 +534,12 @@ void screen_fb_destroy(struct screen *screen, struct fb *fb) {
  * DRM Framebuffer manager: public code
  */
 struct fb *screen_fb_create_main(struct screen *screen, int width, int height,
-bool linear) {
+bool linear, bool no_alpha) {
 	struct buffer *buffer = bufmgr_buffer_create(screen->bufmgr, width,
-	 height, linear);
+	 height, linear, !no_alpha);
 	if (!buffer)
 		return NULL;
-	return screen_fb_create(screen, buffer);
+	return screen_fb_create(screen, buffer, no_alpha);
 }
 
 struct fb *screen_fb_create_from_dmabuf(struct screen *screen, int32_t width,
@@ -518,7 +547,7 @@ int32_t height, uint32_t format, uint32_t num_planes, int32_t *fds, uint32_t
 *offsets, uint32_t *strides, uint64_t *modifiers) {
 	struct buffer *buffer = bufmgr_buffer_import_from_dmabuf(screen->bufmgr,
 	 num_planes, fds, width, height, format, strides, offsets, modifiers[0]);
-	return screen_fb_create(screen, buffer);
+	return screen_fb_create(screen, buffer, true);
 }
 
 void screen_fb_schedule_destroy(struct screen *screen, struct fb *fb) {

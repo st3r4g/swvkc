@@ -28,11 +28,20 @@ static void set_selection(struct wl_client *client, struct wl_resource
 *resource, struct wl_resource *source, uint32_t serial) {
 	if (source == NULL)
 		return;
+//	struct wl_display *display = wl_client_get_display(client);
+//	struct wl_list *list = wl_display_get_client_list(display);
+//	struct wl_client *client_;
+//	wl_client_for_each(client_, list) {
 	/*
 	 * For some reason Firefox wants the selection to be set on a different
 	 * `wl_data_device` resource than the one calling this
 	 */
 	wl_client_for_each_resource(client, set_selection_all, source);
+//	}
+//	TODO: The mechanism for inter-client clipboard works but we must design
+//	a better way to do it:
+//	1) Advertise the selection on focus too
+//	2) Watch out for `wl_data_source` destruction events
 }
 
 static void release(struct wl_client *client, struct wl_resource *resource) {
