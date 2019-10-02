@@ -870,4 +870,3 @@ uint32_t format, uint8_t *data) {
 	vkFreeMemory(device, mem, NULL);
 	vkFreeCommandBuffers(device, command_pool, 1, commands+1);
 }
-

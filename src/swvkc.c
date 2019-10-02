@@ -12,6 +12,7 @@
 #include <globals.h> // libswvkc-wl
 #include <core/keyboard.h>
 #include <core/wl_surface.h>
+#include <core/wl_pointer.h>
 #include <core/subsurface.h>
 #include <extensions/linux-dmabuf-unstable-v1/zwp_linux_dmabuf_v1.h>
 #include <extensions/linux-explicit-synchronization-v1/zwp_linux_surface_synchronization_v1.h>
@@ -344,7 +345,10 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 
 	if (surface->role == ROLE_CURSOR) {
 		shmbuf_cursor(buffer);
-		errlog("cursor update");
+		struct pointer *p = surface->role_object;
+		pointer.hotspot_x = p->hotspot_x;
+		pointer.hotspot_y = p->hotspot_y;
+		errlog("cursor update %d %d", p->hotspot_x, p->hotspot_y);
 		return;
 	}
 
@@ -379,7 +383,8 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 			screen_main(screen);
 		}
 
-		cursor_on_cursor(screen, pointer.x, pointer.y);
+		cursor_on_cursor(screen, pointer.x-pointer.hotspot_x,
+		 pointer.y-pointer.hotspot_y);
 
 		int out_fence_fd = -1;
 		bool with_out_fence = (bool)extension_resource;
@@ -614,7 +619,8 @@ void input_frame_notify(void *user_data) {
 		struct surface *surface = focused_surface(server);
 		if (!surface->frame && !frame_sent && !screen_page_flip_is_pending(server->screen)) {
 			alloc(server->screen);
-			cursor_on_cursor(server->screen, pointer.x, pointer.y);
+			cursor_on_cursor(server->screen, pointer.x-pointer.hotspot_x,
+			 pointer.y-pointer.hotspot_y);
 			screen_atomic_commit(server->screen, false, NULL);
 		}
 	}

@@ -3,12 +3,19 @@
 #include <wayland-server-protocol.h>
 
 #include <core/wl_surface.h>
+#include <core/wl_pointer.h>
+#include <util/log.h>
+
+#include <stdlib.h>
 
 static void set_cursor(struct wl_client *client, struct wl_resource *resource,
 uint32_t serial, struct wl_resource *surface_resource, int32_t hotspot_x,
 int32_t hotspot_y) {
 	if (surface_resource == NULL)
 		return;
+	struct pointer *pointer = wl_resource_get_user_data(resource);
+	pointer->hotspot_x = hotspot_x;
+	pointer->hotspot_y = hotspot_y;
 /*
  * Assign a role to the surface
  */
@@ -22,7 +29,7 @@ int32_t hotspot_y) {
 		return;
 	}
 	surface->role = ROLE_CURSOR;
-//	surface->role_object = ?;
+	surface->role_object = pointer;
 	if (!surface->is_mapped) {
 		void *user_data = surface->surface_events.user_data;
 		surface->surface_events.map(surface, user_data);
@@ -40,5 +47,6 @@ static const struct wl_pointer_interface impl = {
 };
 
 void wl_pointer_new(struct wl_resource *resource) {
-	wl_resource_set_implementation(resource, &impl, 0, 0);
+	struct pointer *pointer = calloc(1, sizeof(struct pointer));
+	wl_resource_set_implementation(resource, &impl, pointer, 0);
 }
