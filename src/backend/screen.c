@@ -379,6 +379,14 @@ bool screen_page_flip_is_pending(struct screen *self) {
 	return self->pending_page_flip;
 }
 
+void alloc(struct screen *S) {
+	assert(!S->req);
+
+	S->req = drmModeAtomicAlloc();
+	if (!S->req)
+		fprintf(stderr, "atomic allocation failed\n");
+}
+
 void cursor_on_cursor(struct screen *S, int x, int y) {
 	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.src_x, 0 << 16); // SRC_X
 	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.src_y, 0 << 16); // SRC_Y

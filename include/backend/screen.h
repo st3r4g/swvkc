@@ -47,6 +47,7 @@ void screen_fb_schedule_destroy(struct screen *screen, struct fb *fb);
 void client_buffer_on_primary(struct screen *S, struct fb *fb, int in_fence_fd);
 void client_buffer_on_overlay(struct screen *S, struct fb *fb, uint32_t width,
 uint32_t height, int in_fence_fd);
+void alloc(struct screen *S);
 void cursor_on_cursor(struct screen *s, int x, int y);
 
 void screen_release(struct screen *);

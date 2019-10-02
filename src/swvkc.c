@@ -485,9 +485,12 @@ void server_change_focus(struct server *self, struct surface_node *node) {
 		 wl_fixed_from_int(0), wl_fixed_from_int(0));
 }
 
+bool frame_sent = false;
+
 void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 	struct server *server = user_data;
+	frame_sent = false;
 //	errlog("VBLANK");
 /*
  * Sometimes a page-flip request won't make it to the immediately following
@@ -507,6 +510,7 @@ tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 			wl_callback_send_done(surface->frame, ms);
 			wl_resource_destroy(surface->frame);
 			surface->frame = 0;
+			frame_sent = true;
 		}
 	}
 /*
@@ -603,6 +607,15 @@ void input_frame_notify(void *user_data) {
 		struct wl_resource *pointer_ = focused_surface_pointer(server);
 		if (pointer_ && wl_resource_get_version(pointer_) >= WL_POINTER_FRAME_SINCE_VERSION)
 			wl_pointer_send_frame(pointer_);
+		/*
+		 * Temporary way to display cursor motion
+		 */
+		struct surface *surface = focused_surface(server);
+		if (!surface->frame && !frame_sent && !screen_page_flip_is_pending(server->screen)) {
+			alloc(server->screen);
+			cursor_on_cursor(server->screen, pointer.x, pointer.y);
+			screen_atomic_commit(server->screen, false, NULL);
+		}
 	}
 }
 

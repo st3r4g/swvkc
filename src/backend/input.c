@@ -122,7 +122,7 @@ struct input *input_setup(struct input_events input_events) {
 	S->poi_fd = open(key_devs_[n_].devnode, O_RDONLY | O_CLOEXEC);
 	if (S->poi_fd < 0) {
 		fprintf(stderr, "open %s: %s\n", key_devs_[n_].devnode, strerror(errno));
-		return 0;
+//		return 0;
 	}
 	free_keyboard_devices(key_devs, count);
 	free_keyboard_devices(key_devs_, count_);
