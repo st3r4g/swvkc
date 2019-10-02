@@ -17,7 +17,8 @@
 
 struct input {
 	int key_fd;
-	int poi_fd;
+	int pointer_fds[16];
+	int n_pointer_fds;
 	int keymap_fd;
 	unsigned int keymap_size;
 
@@ -97,35 +98,26 @@ struct input *input_setup(struct input_events input_events) {
 	}
 	boxlog("Keyboard device node: %s", key_devs[n].devnode);
 
-	int count_, n_;
-	struct key_dev *key_devs_ = find_pointer_devices(&count_);
-	if (count_ > 1) {
-		printf("Found multiple pointers:\n");
-		for (int i=0; i<count_; i++) {
-			printf("(%d) [%s]\n", i, key_devs_[i].devnode);
-		}
-		printf("Choose one: ");
-		scanf("%d", &n_);
-	} else {
-		// Handle count == 0
-		n_ = 0;
-	}
-	boxlog("Pointer device node: %s", key_devs_[n].devnode);
-
 	struct input *S = calloc(1, sizeof(struct input));
+
+	struct key_dev *key_devs_ = find_pointer_devices(&S->n_pointer_fds);
+	for (int i=0; i<S->n_pointer_fds; i++) {
+		boxlog(" Pointer device node: %s", key_devs_[i].devnode);
+		S->pointer_fds[i] = open(key_devs_[i].devnode, O_RDONLY | O_CLOEXEC);
+		if (S->pointer_fds[i] < 0) {
+			fprintf(stderr, "open %s: %s\n", key_devs_[i].devnode, strerror(errno));
+			return 0;
+		}
+	}
+
 	S->input_events = input_events;
 	S->key_fd = open(key_devs[n].devnode, O_RDONLY | O_CLOEXEC);
 	if (S->key_fd < 0) {
 		fprintf(stderr, "open %s: %s\n", key_devs[n].devnode, strerror(errno));
 		return 0;
 	}
-	S->poi_fd = open(key_devs_[n_].devnode, O_RDONLY | O_CLOEXEC);
-	if (S->poi_fd < 0) {
-		fprintf(stderr, "open %s: %s\n", key_devs_[n_].devnode, strerror(errno));
-//		return 0;
-	}
 	free_keyboard_devices(key_devs, count);
-	free_keyboard_devices(key_devs_, count_);
+	free_keyboard_devices(key_devs_, S->n_pointer_fds);
 
 	ioctl(S->key_fd, EVIOCGRAB, 1);
 
@@ -177,8 +169,12 @@ int input_get_key_fd(struct input *S) {
 	return S->key_fd;
 }
 
-int input_get_poi_fd(struct input *S) {
-	return S->poi_fd;
+int input_get_poi_fd_n(struct input *S) {
+	return S->n_pointer_fds;
+}
+
+int input_get_poi_fd(struct input *S, int i) {
+	return S->pointer_fds[i];
 }
 
 unsigned int input_get_keymap_fd(struct input *S) {
@@ -260,6 +256,14 @@ int touchpad_ev_handler(int fd, uint32_t mask, void *data) {
 		S->input_events.button(0, BTN_LEFT, ev.value,
 		 S->input_events.user_data);
 		return 0;
+	} else if (ev.type == EV_REL && ev.code == REL_X) {
+		pointer.x += ev.value;
+		S->input_events.motion(0, S->input_events.user_data);
+		return 0;
+	} else if (ev.type == EV_REL && ev.code == REL_Y) {
+		pointer.y += ev.value;
+		S->input_events.motion(0, S->input_events.user_data);
+		return 0;
 	} else
 		return 0;
 }
@@ -269,6 +273,6 @@ void input_release(struct input *S) {
 	xkb_keymap_unref(S->keymap);
 	xkb_context_unref(S->context);
 	close(S->key_fd);
-	close(S->poi_fd);
+	close(S->pointer_fds[0]);
 	free(S);
 }

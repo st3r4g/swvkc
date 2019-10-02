@@ -142,8 +142,9 @@ int swvkc_initialize() {
 	WL_EVENT_READABLE, gpu_ev_handler, server);
 	wl_event_loop_add_fd(el, input_get_key_fd(server->input),
 	WL_EVENT_READABLE, key_ev_handler, server->input);
-	wl_event_loop_add_fd(el, input_get_poi_fd(server->input),
-	WL_EVENT_READABLE, touchpad_ev_handler, server->input);
+	for (int i=0; i<input_get_poi_fd_n(server->input); i++)
+		wl_event_loop_add_fd(el, input_get_poi_fd(server->input, i),
+		 WL_EVENT_READABLE, touchpad_ev_handler, server->input);
 
 //	screen_post(server->screen, 0);
 	return 0;

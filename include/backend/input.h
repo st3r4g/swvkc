@@ -32,7 +32,8 @@ struct input;
 
 struct input *input_setup(struct input_events input_events);
 int input_get_key_fd(struct input *S);
-int input_get_poi_fd(struct input *S);
+int input_get_poi_fd_n(struct input *S);
+int input_get_poi_fd(struct input *S, int i);
 unsigned int input_get_keymap_fd(struct input *S);
 unsigned int input_get_keymap_size(struct input *S);
 

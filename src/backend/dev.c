@@ -64,6 +64,7 @@ struct key_dev *find_keyboard_devices(int *count) {
 struct key_dev *find_pointer_devices(int *count) {
 	struct udev *udev = udev_new();
 	struct udev_enumerate *enu = udev_enumerate_new(udev);
+	udev_enumerate_add_match_property(enu, "ID_INPUT_MOUSE", "1");
 	udev_enumerate_add_match_property(enu, "ID_INPUT_TOUCHPAD", "1");
 	udev_enumerate_add_match_sysname(enu, "event*");
 	udev_enumerate_scan_devices(enu);
