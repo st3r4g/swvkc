@@ -7,7 +7,7 @@
 void data_device_manager_create_data_source(struct wl_client *client, struct
 wl_resource *resource, uint32_t id) {
 	struct wl_resource *data_source_resource = wl_resource_create(client,
-	&wl_data_source_interface, 1, id);
+	&wl_data_source_interface, 3, id);
 	data_source_new(data_source_resource);
 }
 

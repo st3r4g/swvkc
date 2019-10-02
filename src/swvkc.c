@@ -44,6 +44,7 @@ struct surface_node {
 	struct surface *surface;
 	struct surface *child; // XXX: temporary
 	struct wl_resource *keyboard;
+	struct wl_resource *pointer;
 	struct wl_list link;
 };
 
@@ -58,10 +59,17 @@ struct lss_node {
 	struct wl_list link;
 };
 
+extern int key_ev_handler(int, uint32_t, void *);
+extern int touchpad_ev_handler(int, uint32_t, void *);
+
 void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip);
 int gpu_ev_handler(int fd, uint32_t mask, void *data);
-int key_ev_handler(int key_fd, uint32_t mask, void *data);
+void input_key_notify(struct aaa *e, void *user_data);
+void input_motion_notify(unsigned int time, void *user_data);
+void input_frame_notify(void *user_data);
+void input_button_notify(unsigned int time, unsigned int button, unsigned int
+state, void *user_data);
 
 static struct server *swvkc; //TODO
 int swvkc_initialize() {
@@ -86,7 +94,15 @@ int swvkc_initialize() {
  * Fast computers could be affected by the 'stuck enter key' bug
  * (due to EVIOCGRAB inside input_setup)
  */
-	server->input = input_setup();
+	struct input_events input_events = {
+		.key = input_key_notify,
+		.modifiers = 0,
+		.motion = input_motion_notify,
+		.frame = input_frame_notify,
+		.button = input_button_notify,
+		.user_data = server
+	};
+	server->input = input_setup(input_events);
 	if (!server->input) {
 		errlog("Could not setup input");
 		return EXIT_FAILURE;
@@ -125,9 +141,9 @@ int swvkc_initialize() {
 	wl_event_loop_add_fd(el, screen_get_gpu_fd(server->screen),
 	WL_EVENT_READABLE, gpu_ev_handler, server);
 	wl_event_loop_add_fd(el, input_get_key_fd(server->input),
-	WL_EVENT_READABLE, key_ev_handler, server);
+	WL_EVENT_READABLE, key_ev_handler, server->input);
 	wl_event_loop_add_fd(el, input_get_poi_fd(server->input),
-	WL_EVENT_READABLE, key_ev_handler, server);
+	WL_EVENT_READABLE, touchpad_ev_handler, server->input);
 
 //	screen_post(server->screen, 0);
 	return 0;
@@ -158,6 +174,12 @@ struct wl_resource *focused_surface_keyboard(struct server *server) {
 	struct surface_node *node;
 	node = wl_container_of(server->mapped_surfaces_list.next, node, link);
 	return node->keyboard;
+}
+
+struct wl_resource *focused_surface_pointer(struct server *server) {
+	struct surface_node *node;
+	node = wl_container_of(server->mapped_surfaces_list.next, node, link);
+	return node->pointer;
 }
 
 void dmabuf(struct wl_resource *dmabuf_resource, struct screen *screen, int
@@ -238,6 +260,9 @@ void surface_map_notify(struct surface *surface, void *user_data) {
 		struct wl_resource *keyboard = focused_surface_keyboard(server);
 		if (keyboard)
 			wl_keyboard_send_leave(keyboard, 0, old->resource);
+		struct wl_resource *pointer = focused_surface_pointer(server);
+		if (pointer)
+			wl_pointer_send_leave(pointer, 0, old->resource);
 	}
 	errlog("A surface has been mapped");
 
@@ -261,6 +286,7 @@ void surface_map_notify(struct surface *surface, void *user_data) {
 	node->surface = surface;
 	node->child = NULL;
 	node->keyboard = keyboard;
+	node->pointer = pointer;
 	wl_list_insert(&server->mapped_surfaces_list, &node->link);
 }
 
@@ -299,6 +325,10 @@ void surface_unmap_notify(struct surface *surface, void *user_data) {
 		struct wl_resource *keyboard = focused_surface_keyboard(server);
 		if (keyboard)
 			wl_keyboard_send_enter(keyboard, 0, new->resource, &array);
+		struct wl_resource *pointer = focused_surface_pointer(server);
+		if (pointer)
+			wl_pointer_send_enter(pointer, 0, new->resource,
+			 wl_fixed_from_int(0), wl_fixed_from_int(0));
 	}
 }
 
@@ -441,12 +471,18 @@ void server_change_focus(struct server *self, struct surface_node *node) {
 	struct wl_resource *keyboard = focused_surface_keyboard(self);
 	if (keyboard)
 		wl_keyboard_send_leave(keyboard, 0, focused->resource);
+	struct wl_resource *pointer = focused_surface_pointer(self);
+	if (pointer)
+		wl_pointer_send_leave(pointer, 0, focused->resource);
 	wl_list_remove(&node->link);
 	wl_list_insert(&self->mapped_surfaces_list, &node->link);
 	struct wl_array array;
 	wl_array_init(&array); //Need the currently pressed keys
 	if (node->keyboard)
 		wl_keyboard_send_enter(node->keyboard, 0, node->surface->resource, &array);
+	if (node->pointer)
+		wl_pointer_send_enter(node->pointer, 0, node->surface->resource,
+		 wl_fixed_from_int(0), wl_fixed_from_int(0));
 }
 
 void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
@@ -506,30 +542,30 @@ int gpu_ev_handler(int fd, uint32_t mask, void *data) {
 	return 0;
 }
 
-int key_ev_handler(int fd, uint32_t mask, void *data) {
+void input_key_notify(struct aaa *e, void *user_data) {
+	struct server *server = user_data;
 	static bool steal = false;
 	static int i = 0;
 	static char name[64] = {'\0'};
-	struct server *server = data;
-	struct aaa aaa;
-	int u = input_handle_event(server->input, &aaa, fd);
-	if (u == 1) {
-		if (aaa.key == 59) { //F1
-			wl_display_terminate(server->display);
-			return 0;
-		} else if (aaa.key == KEY_LEFTMETA && aaa.state == 1) {
+	switch (e->key) {
+	case KEY_F1:
+		wl_display_terminate(server->display);
+	break;
+	case KEY_LEFTMETA:
+		if (e->state == 1) {
 			steal = true;
 			memset(name, '\0', i);
 			i = 0;
 			errlog("Win key pressed");
-			return 0;
-		} else if (aaa.key == KEY_LEFTMETA && aaa.state == 0) {
+		} else if (e->state == 0) {
 			errlog("Win key released, written %s", name);
 			steal = false;
-			return 0;
-		} else if (steal && aaa.state == 1) {
-			errlog("the key '%s' was pressed", aaa.name);
-			name[i] = aaa.name[0];
+		}
+	break;
+	default:
+		if (steal && e->state == 1) {
+			errlog("the key '%s' was pressed", e->name);
+			name[i] = e->name[0];
 			i++;
 			struct surface_node *match = match_app_id(server, name);
 			errlog("match %p", (void*)match);
@@ -540,13 +576,42 @@ int key_ev_handler(int fd, uint32_t mask, void *data) {
 			if (keyboard) {
 				struct keyboard *data = wl_resource_get_user_data(keyboard);
 				if (data) {
-				keyboard_send_key(data, aaa.key, aaa.state);
+				keyboard_send_key(data, e->key, e->state);
 				keyboard_send_modifiers(data,
-				 aaa.mods_depressed, aaa.mods_latched,
-				  aaa.mods_locked, aaa.group);
+				 e->mods_depressed, e->mods_latched,
+				  e->mods_locked, e->group);
 				}
 			}
 		}
 	}
-	return 0;
+}
+
+void input_motion_notify(unsigned int time, void *user_data) {
+	struct server *server = user_data;
+	if (!wl_list_empty(&server->mapped_surfaces_list)) {
+		struct wl_resource *pointer_ = focused_surface_pointer(server);
+		if (pointer_)
+			wl_pointer_send_motion(pointer_, time,
+			 wl_fixed_from_int(pointer.x),
+			  wl_fixed_from_int(pointer.y));
+	}
+}
+
+void input_frame_notify(void *user_data) {
+	struct server *server = user_data;
+	if (!wl_list_empty(&server->mapped_surfaces_list)) {
+		struct wl_resource *pointer_ = focused_surface_pointer(server);
+		if (pointer_ && wl_resource_get_version(pointer_) >= WL_POINTER_FRAME_SINCE_VERSION)
+			wl_pointer_send_frame(pointer_);
+	}
+}
+
+void input_button_notify(unsigned int time, unsigned int button, unsigned int
+state, void *user_data) {
+	struct server *server = user_data;
+	if (!wl_list_empty(&server->mapped_surfaces_list)) {
+		struct wl_resource *pointer_ = focused_surface_pointer(server);
+		if (pointer_ && wl_resource_get_version(pointer_) >= WL_POINTER_BUTTON_SINCE_VERSION)
+			wl_pointer_send_button(pointer_, 0, time, button, state);
+	}
 }

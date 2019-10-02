@@ -24,6 +24,8 @@ struct input {
 	struct xkb_context *context;
 	struct xkb_keymap *keymap;
 	struct xkb_state *state;
+
+	struct input_events input_events;
 };
 
 void free_keyboard_devices(struct key_dev *key_devs, int count) {
@@ -77,7 +79,7 @@ int create_file(off_t size) {
 	return fd;
 }
 
-struct input *input_setup() {
+struct input *input_setup(struct input_events input_events) {
 	printf("├─ INPUT (Linux Input Subsystem)\n");
 	int count, n;
 	struct key_dev *key_devs = find_keyboard_devices(&count);
@@ -111,6 +113,7 @@ struct input *input_setup() {
 	boxlog("Pointer device node: %s", key_devs_[n].devnode);
 
 	struct input *S = calloc(1, sizeof(struct input));
+	S->input_events = input_events;
 	S->key_fd = open(key_devs[n].devnode, O_RDONLY | O_CLOEXEC);
 	if (S->key_fd < 0) {
 		fprintf(stderr, "open %s: %s\n", key_devs[n].devnode, strerror(errno));
@@ -186,55 +189,77 @@ unsigned int input_get_keymap_size(struct input *S) {
 	return S->keymap_size;
 }
 
+
+int key_ev_handler(int fd, uint32_t mask, void *data) {
+	static struct aaa aaa;
+	struct input *S = data;
+
+	struct input_event ev;
+	read(fd, &ev, sizeof(struct input_event));
+
+	if (ev.type == EV_KEY) {
+		if (ev.value == 2)
+			return 0;
+		aaa.key = ev.code;
+		aaa.state = ev.value > 0 ? 1 : 0;
+		xkb_keycode_t keycode = aaa.key + 8;
+		xkb_state_key_get_utf8(S->state, keycode, aaa.name, 2);
+		enum xkb_key_direction direction = aaa.state ? XKB_KEY_DOWN : XKB_KEY_UP;
+
+		xkb_state_update_key(S->state, keycode, direction);
+
+		aaa.mods_depressed = xkb_state_serialize_mods(S->state,
+		XKB_STATE_MODS_DEPRESSED);
+		aaa.mods_latched = xkb_state_serialize_mods(S->state,
+		XKB_STATE_MODS_LATCHED);
+		aaa.mods_locked = xkb_state_serialize_mods(S->state,
+		XKB_STATE_MODS_LOCKED);
+		aaa.group = xkb_state_serialize_layout(S->state,
+		XKB_STATE_LAYOUT_EFFECTIVE);
+		
+		S->input_events.key(&aaa, S->input_events.user_data);
+	}
+
+	return 0;
+}
+
 bool motion_x = false;
 bool motion_y = false;
 int32_t abs_x = 0;
 int32_t abs_y = 0;
 
-int input_handle_event(struct input *S, struct aaa *aaa, int fd) {
+int touchpad_ev_handler(int fd, uint32_t mask, void *data) {
+	struct input *S = data;
+
 	struct input_event ev;
 	read(fd, &ev, sizeof(struct input_event));
 
-	if (ev.type == EV_KEY && fd == input_get_key_fd(S)) { // super bad
-		if (ev.value == 2)
-			return 0;
-		aaa->key = ev.code;
-		aaa->state = ev.value > 0 ? 1 : 0;
-		xkb_keycode_t keycode = aaa->key + 8;
-		xkb_state_key_get_utf8(S->state, keycode, aaa->name, 2);
-		enum xkb_key_direction direction = aaa->state ? XKB_KEY_DOWN : XKB_KEY_UP;
-
-		xkb_state_update_key(S->state, keycode, direction);
-
-		aaa->mods_depressed = xkb_state_serialize_mods(S->state,
-		XKB_STATE_MODS_DEPRESSED);
-		aaa->mods_latched = xkb_state_serialize_mods(S->state,
-		XKB_STATE_MODS_LATCHED);
-		aaa->mods_locked = xkb_state_serialize_mods(S->state,
-		XKB_STATE_MODS_LOCKED);
-		aaa->group = xkb_state_serialize_layout(S->state,
-		XKB_STATE_LAYOUT_EFFECTIVE);
-
-		return 1;
-	} else if (ev.type == EV_KEY && ev.code == BTN_TOUCH && ev.value == 0) {
+	if (ev.type == EV_KEY && ev.code == BTN_TOUCH && ev.value == 0) {
 		motion_x = false, motion_y = false;
-		return 2;
+		return 0;
 	} else if (ev.type == EV_ABS && ev.code == ABS_X) {
-		if (motion_x)
+		if (motion_x) {
 			pointer.x += (ev.value - abs_x)/2;
-		else
+			S->input_events.motion(0, S->input_events.user_data);
+		} else
 			motion_x = true;
 		abs_x = ev.value;
-		return 2;
+		return 0;
 	} else if (ev.type == EV_ABS && ev.code == ABS_Y) {
-		if (motion_y)
+		if (motion_y) {
 			pointer.y += (ev.value - abs_y)/2;
-		else
+			S->input_events.motion(0, S->input_events.user_data);
+		} else
 			motion_y = true;
 		abs_y = ev.value;
-		return 2;
-	} else if (ev.type == EV_SYN && fd == input_get_poi_fd(S)) {
-		return 3;
+		return 0;
+	} else if (ev.type == EV_SYN) {
+		S->input_events.frame(S->input_events.user_data);
+		return 0;
+	} else if (ev.type == EV_KEY && ev.code == BTN_LEFT) {
+		S->input_events.button(0, BTN_LEFT, ev.value,
+		 S->input_events.user_data);
+		return 0;
 	} else
 		return 0;
 }
