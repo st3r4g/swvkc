@@ -283,12 +283,14 @@ int drm_setup(struct screen *S) {
 
 //	boxlog("%d %d %d", S->plane_id, S->props_plane_fb_id, S->old_fb_id);
 
+	alloc(S);
 	request_vblank(S);
 	return 0;
 }
 
 static void vblank_handler(int fd, unsigned int sequence, unsigned int tv_sec,
 unsigned int tv_usec, void *user_data) {
+	errlog("vblank_handler");
 	struct screen *screen = user_data;
 	screen->vblank_notify(fd, sequence, tv_sec, tv_usec, screen->user_data,
 	 screen->vblank_has_page_flip);
@@ -303,6 +305,7 @@ uint32_t get_active_fb(int fd, uint32_t plane_id);
 
 static void page_flip_handler(int fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data) {
+	errlog("page_flip_handler");
 	struct screen *screen = user_data;
 	uint32_t active_fb_primary = get_active_fb(screen->gpu_fd, screen->plane_id);
 	uint32_t active_fb_overlay = get_active_fb(screen->gpu_fd, screen->overlay_plane_id);
@@ -361,7 +364,9 @@ int screen_atomic_commit(struct screen *self, bool with_out_fence, int
 		perror("drmModeAtomicCommit");
 
 	drmModeAtomicFree(self->req);
-	self->req = NULL;
+	self->req = drmModeAtomicAlloc();
+	if (!self->req)
+		fprintf(stderr, "atomic allocation failed\n");
 
 	if (ret == 0)
 		self->pending_page_flip = true;
@@ -388,6 +393,8 @@ void alloc(struct screen *S) {
 }
 
 void cursor_on_cursor(struct screen *S, int x, int y) {
+	assert(S->req);
+
 	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.src_x, 0 << 16); // SRC_X
 	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.src_y, 0 << 16); // SRC_Y
 	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.src_w, 64 << 16); // SRC_W
@@ -403,11 +410,7 @@ void cursor_on_cursor(struct screen *S, int x, int y) {
 }
 
 void client_buffer_on_primary(struct screen *S, struct fb *fb, int in_fence_fd) {
-	assert(!S->req);
-
-	S->req = drmModeAtomicAlloc();
-	if (!S->req)
-		fprintf(stderr, "atomic allocation failed\n");
+	assert(S->req);
 
 	if (drmModeAtomicAddProperty(S->req, S->plane_id, S->props_plane_fb_id, fb->id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
@@ -420,11 +423,7 @@ void client_buffer_on_primary(struct screen *S, struct fb *fb, int in_fence_fd) 
 
 void client_buffer_on_overlay(struct screen *S, struct fb *fb, uint32_t width,
 uint32_t height, int in_fence_fd) {
-	assert(!S->req);
-
-	S->req = drmModeAtomicAlloc();
-	if (!S->req)
-		fprintf(stderr, "atomic allocation failed\n");
+	assert(S->req);
 
 	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.src_x, 0 << 16); // SRC_X
 	drmModeAtomicAddProperty(S->req, S->overlay_plane_id, S->props.plane.src_y, 0 << 16); // SRC_Y
@@ -446,16 +445,12 @@ uint32_t height, int in_fence_fd) {
 }
 
 void screen_main(struct screen *S) {
+	assert(S->req);
+
 // Swap buffers TODO improve
 	struct fb *tmp = S->back;
 	S->back = S->front;
 	S->front = tmp;
-
-	assert(!S->req);
-
-	S->req = drmModeAtomicAlloc();
-	if (!S->req)
-		fprintf(stderr, "atomic allocation failed\n");
 
 	if (drmModeAtomicAddProperty(S->req, S->plane_id,
 	S->props_plane_fb_id, S->front->id) < 0)

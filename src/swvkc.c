@@ -33,6 +33,8 @@ struct server {
 
 	struct input *input;
 	struct screen *screen;
+
+	struct wl_event_source *commit;
 /*
  * Temporary way to manage surfaces, it should evolve into a tree
  */
@@ -71,6 +73,13 @@ void input_motion_notify(unsigned int time, void *user_data);
 void input_frame_notify(void *user_data);
 void input_button_notify(unsigned int time, unsigned int button, unsigned int
 state, void *user_data);
+
+int timed_commit(void *data) {
+	struct screen *screen = data;
+	screen_atomic_commit(screen, false, NULL);
+	errlog("TIMED_COMMIT");
+	return 0;
+}
 
 static struct server *swvkc; //TODO
 int swvkc_initialize() {
@@ -146,6 +155,7 @@ int swvkc_initialize() {
 	for (int i=0; i<input_get_poi_fd_n(server->input); i++)
 		wl_event_loop_add_fd(el, input_get_poi_fd(server->input, i),
 		 WL_EVENT_READABLE, touchpad_ev_handler, server->input);
+	server->commit = wl_event_loop_add_timer(el, timed_commit, server->screen);
 
 //	screen_post(server->screen, 0);
 	return 0;
@@ -352,10 +362,10 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 		return;
 	}
 
-	if (screen_page_flip_is_pending(server->screen)) {
+/*	if (screen_page_flip_is_pending(server->screen)) {
 		errlog("WARNING: contents update discarded (page flip is pending)");
 		wl_buffer_send_release(buffer);
-	} else if (surface != focused_surface(server)) {
+	} else*/ if (surface != focused_surface(server)) {
 		errlog("WARNING: contents update discarded (surface is not focused)");
 		wl_buffer_send_release(buffer);
 	} else {
@@ -386,7 +396,7 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 		cursor_on_cursor(screen, pointer.x-pointer.hotspot_x,
 		 pointer.y-pointer.hotspot_y);
 
-		int out_fence_fd = -1;
+/*		int out_fence_fd = -1;
 		bool with_out_fence = (bool)extension_resource;
 		screen_atomic_commit(screen, with_out_fence, &out_fence_fd);
 		if (extension_resource) {
@@ -401,7 +411,7 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 				node->out_fence_fd = out_fence_fd;
 				wl_list_insert(&server->lss_list, &node->link);
 			}
-		}
+		}*/
 	}
 }
 
@@ -491,13 +501,12 @@ void server_change_focus(struct server *self, struct surface_node *node) {
 		 wl_fixed_from_int(0), wl_fixed_from_int(0));
 }
 
-bool frame_sent = false;
-
 void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 	struct server *server = user_data;
-	frame_sent = false;
-//	errlog("VBLANK");
+	wl_event_source_timer_update(server->commit, 15);
+
+	errlog("VBLANK %d", screen_page_flip_is_pending(server->screen));
 /*
  * Sometimes a page-flip request won't make it to the immediately following
  * vblank due to being issued too close to it. When this happens, we don't want
@@ -516,7 +525,6 @@ tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 			wl_callback_send_done(surface->frame, ms);
 			wl_resource_destroy(surface->frame);
 			surface->frame = 0;
-			frame_sent = true;
 		}
 	}
 /*
@@ -616,13 +624,15 @@ void input_frame_notify(void *user_data) {
 		/*
 		 * Temporary way to display cursor motion
 		 */
-		struct surface *surface = focused_surface(server);
+		cursor_on_cursor(server->screen, pointer.x-pointer.hotspot_x,
+		 pointer.y-pointer.hotspot_y);
+/*		struct surface *surface = focused_surface(server);
 		if (!surface->frame && !frame_sent && !screen_page_flip_is_pending(server->screen)) {
 			alloc(server->screen);
 			cursor_on_cursor(server->screen, pointer.x-pointer.hotspot_x,
 			 pointer.y-pointer.hotspot_y);
 			screen_atomic_commit(server->screen, false, NULL);
-		}
+		}*/
 	}
 }
 
