@@ -117,5 +117,5 @@ been merged yet in Mesa's release branch: https://gitlab.freedesktop.org/mesa/me
 I created a patch containing the commits from the link above merged on top of
 the latest Mesa. I'll try to keep it updated as new versions of Mesa get
 released until the code gets merged upstream.\
-Here is the [PATCH](https://mega.nz/#!a1pznIZQ!bfJaxpuxOeWy4N8qQdZrUHFu5zwWtInFXvDbKWH2MCM)
-(verified to build against versions 19.1.x)
+Choose the version and patch it with `patch -Np0`:\
+| [19.2.x](https://mega.nz/#!S4pUgCaL!IZO9vUrVhrdy2SC8K7PaYzeW2kFuLnBqf6XsDTpbq50) | [19.1.x](https://mega.nz/#!a1pznIZQ!bfJaxpuxOeWy4N8qQdZrUHFu5zwWtInFXvDbKWH2MCM) |
