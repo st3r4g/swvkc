@@ -78,7 +78,7 @@ map_condition_field condition) {
 }
 
 static void commit_notify(struct wl_listener *listener, void *data) {
-	errlog("subsurface_commit_notify");
+//	errlog("subsurface_commit_notify");
 	struct subsurface *subsurface;
 	subsurface = wl_container_of(listener, subsurface, commit);
 	struct surface *surface = data;
@@ -90,7 +90,7 @@ static void commit_notify(struct wl_listener *listener, void *data) {
 }
 
 static void parent_commit_notify(struct wl_listener *listener, void *data) {
-	errlog("subsurface_parent_commit_notify");
+//	errlog("subsurface_parent_commit_notify");
 	struct subsurface *subsurface;
 	subsurface = wl_container_of(listener, subsurface, parent_commit);
 

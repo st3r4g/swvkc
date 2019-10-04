@@ -74,10 +74,38 @@ void input_frame_notify(void *user_data);
 void input_button_notify(unsigned int time, unsigned int button, unsigned int
 state, void *user_data);
 
+bool update = false;
+struct wl_resource *g_extension_resource = NULL;
+/*
+ * This is wrong, it should be something like a list to keep track of several
+ * lss resources to notify, but I don't care now as nobody uses explicit sync
+ */
+
 int timed_commit(void *data) {
-	struct screen *screen = data;
-	screen_atomic_commit(screen, false, NULL);
-	errlog("TIMED_COMMIT");
+	if (!update)
+		return 0;
+	struct server *server = data;
+
+	int out_fence_fd = -1;
+	bool with_out_fence = (bool)g_extension_resource;
+//	errlog("TIMED_COMMIT %d", screen_page_flip_is_pending(screen));
+	screen_atomic_commit(server->screen, with_out_fence, &out_fence_fd);
+	if (g_extension_resource) {
+		struct linux_surface_synchronization
+		*linux_surface_synchronization =
+		wl_resource_get_user_data(g_extension_resource);
+		if (out_fence_fd < 0)
+			linux_surface_synchronization_send_immediate_release(linux_surface_synchronization);
+		else {
+			struct lss_node *node = malloc(sizeof(*node));
+			node->lss = linux_surface_synchronization;
+			node->out_fence_fd = out_fence_fd;
+			wl_list_insert(&server->lss_list, &node->link);
+		}
+	}
+
+	update = false;
+	g_extension_resource = NULL;
 	return 0;
 }
 
@@ -155,7 +183,7 @@ int swvkc_initialize() {
 	for (int i=0; i<input_get_poi_fd_n(server->input); i++)
 		wl_event_loop_add_fd(el, input_get_poi_fd(server->input, i),
 		 WL_EVENT_READABLE, touchpad_ev_handler, server->input);
-	server->commit = wl_event_loop_add_timer(el, timed_commit, server->screen);
+	server->commit = wl_event_loop_add_timer(el, timed_commit, server);
 
 //	screen_post(server->screen, 0);
 	return 0;
@@ -393,25 +421,8 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 			screen_main(screen);
 		}
 
-		cursor_on_cursor(screen, pointer.x-pointer.hotspot_x,
-		 pointer.y-pointer.hotspot_y);
-
-/*		int out_fence_fd = -1;
-		bool with_out_fence = (bool)extension_resource;
-		screen_atomic_commit(screen, with_out_fence, &out_fence_fd);
-		if (extension_resource) {
-			struct linux_surface_synchronization
-			*linux_surface_synchronization =
-			wl_resource_get_user_data(extension_resource);
-			if (out_fence_fd < 0)
-				linux_surface_synchronization_send_immediate_release(linux_surface_synchronization);
-			else {
-				struct lss_node *node = malloc(sizeof(*node));
-				node->lss = linux_surface_synchronization;
-				node->out_fence_fd = out_fence_fd;
-				wl_list_insert(&server->lss_list, &node->link);
-			}
-		}*/
+		update = true;
+		g_extension_resource = extension_resource;
 	}
 }
 
@@ -504,19 +515,18 @@ void server_change_focus(struct server *self, struct surface_node *node) {
 void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip) {
 	struct server *server = user_data;
-	wl_event_source_timer_update(server->commit, 15);
-
-	errlog("VBLANK %d", screen_page_flip_is_pending(server->screen));
 /*
  * Sometimes a page-flip request won't make it to the immediately following
  * vblank due to being issued too close to it. When this happens, we don't want
  * to tell the client to render a new frame. This is the worst case scenario for
  * input lag (= a little more than the inverse of the refresh rate)
  */
-	bool pending_page_flip = screen_page_flip_is_pending(server->screen);
-	bool skip_frame = pending_page_flip && !vblank_has_page_flip;
-	if (skip_frame)
-		return;
+       bool pending_page_flip = screen_page_flip_is_pending(server->screen);
+       bool skip_frame = pending_page_flip && !vblank_has_page_flip;
+       if (skip_frame)
+               return;
+
+	wl_event_source_timer_update(server->commit, 15);
 
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct surface *surface = focused_surface(server);
@@ -626,6 +636,7 @@ void input_frame_notify(void *user_data) {
 		 */
 		cursor_on_cursor(server->screen, pointer.x-pointer.hotspot_x,
 		 pointer.y-pointer.hotspot_y);
+		update = true;
 /*		struct surface *surface = focused_surface(server);
 		if (!surface->frame && !frame_sent && !screen_page_flip_is_pending(server->screen)) {
 			alloc(server->screen);

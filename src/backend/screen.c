@@ -290,7 +290,6 @@ int drm_setup(struct screen *S) {
 
 static void vblank_handler(int fd, unsigned int sequence, unsigned int tv_sec,
 unsigned int tv_usec, void *user_data) {
-	errlog("vblank_handler");
 	struct screen *screen = user_data;
 	screen->vblank_notify(fd, sequence, tv_sec, tv_usec, screen->user_data,
 	 screen->vblank_has_page_flip);
@@ -305,7 +304,6 @@ uint32_t get_active_fb(int fd, uint32_t plane_id);
 
 static void page_flip_handler(int fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data) {
-	errlog("page_flip_handler");
 	struct screen *screen = user_data;
 	uint32_t active_fb_primary = get_active_fb(screen->gpu_fd, screen->plane_id);
 	uint32_t active_fb_overlay = get_active_fb(screen->gpu_fd, screen->overlay_plane_id);
