@@ -599,6 +599,7 @@ void input_key_notify(struct aaa *e, void *user_data) {
 			errlog("match %p", (void*)match);
 			if (match)
 				server_change_focus(server, match);
+		} else if (steal) {
 		} else if (!wl_list_empty(&server->mapped_surfaces_list)) {
 			struct wl_resource *keyboard = focused_surface_keyboard(server);
 			if (keyboard) {
