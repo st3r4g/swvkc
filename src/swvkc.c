@@ -576,9 +576,6 @@ void input_key_notify(struct aaa *e, void *user_data) {
 	static int i = 0;
 	static char name[64] = {'\0'};
 	switch (e->key) {
-	case KEY_F1:
-		wl_display_terminate(server->display);
-	break;
 	case KEY_LEFTMETA:
 		if (e->state == 1) {
 			steal = true;
@@ -592,6 +589,10 @@ void input_key_notify(struct aaa *e, void *user_data) {
 	break;
 	default:
 		if (steal && e->state == 1) {
+			if (e->key == KEY_ESC) {
+				wl_display_terminate(server->display);
+				break;
+			}
 			errlog("the key '%s' was pressed", e->name);
 			name[i] = e->name[0];
 			i++;

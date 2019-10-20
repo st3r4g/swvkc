@@ -81,8 +81,8 @@ Upon successful compilation the binary is located inside the `build` directory.
 * Start the program from the Linux console (not inside another X11/Wayland
   compositor)
 * Pass it the client (and its arguments) you want to run
-* Press F1 to exit [will change soon]
-* To change focus: hold the LEFTMETA (Win) key and start to type the client name
+* Hold the LEFTMETA (Win) key and press ESC to exit
+* To change focus: hold LEFTMETA and start to type the client name
   until an unambiguous match is found
 * Keyboard settings (such as layout) are set through XKB_DEFAULT\* environmental
   variables.
