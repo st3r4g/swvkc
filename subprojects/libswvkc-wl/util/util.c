@@ -1,3 +1,4 @@
+#define _GNU_SOURCE // O_TMPFILE on glibc
 #define _POSIX_C_SOURCE 200809L
 #include <wayland-server-core.h>
 #include <util/util.h>
