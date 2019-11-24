@@ -237,22 +237,17 @@ int drm_setup(struct screen *S) {
 	}
 	
 	drmModeRes *res = drmModeGetResources(S->gpu_fd);
+	drmModeConnector **connected =
+	 malloc(res->count_connectors*sizeof(drmModeConnector));
 	int count = 0;
 	for (int i=0; i<res->count_connectors; i++) {
+/* NOTE: This function takes a lot of time (>100ms) for some connectors, biggest
+ * contributor to startup time. */
 		drmModeConnector *conn = drmModeGetConnector(S->gpu_fd,
 		res->connectors[i]);
 		if (conn->connection == DRM_MODE_CONNECTED) {
+			connected[count] = conn;
 			count++;
-		}
-		drmModeFreeConnector(conn);
-	}
-	drmModeConnector **connected = malloc(count*sizeof(drmModeConnector));
-	for (int i=0,j=0; i<res->count_connectors; i++) {
-		drmModeConnector *conn = drmModeGetConnector(S->gpu_fd,
-		res->connectors[i]);
-		if (conn->connection == DRM_MODE_CONNECTED) {
-			connected[j] = conn;
-			j++;
 		} else
 			drmModeFreeConnector(conn);
 	}
