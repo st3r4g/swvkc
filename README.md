@@ -107,15 +107,8 @@ From Issues in https://www.khronos.org/registry/vulkan/specs/1.1-extensions/html
 The extension mentioned in the last line is precisely
 `VK_EXT_image_drm_format_modifier`. If you are unable to display clients like
 `weston-simple-shm`, `weston-terminal` and `firefox`, the absence of this
-extension is likely to be the problem. If you are using an Intel GPU and don't
-want to wait for Mesa to implement the extension, consider following the
-paragraph below.
+extension is likely to be the problem.
 
-### Patching and compiling Mesa
-A working implementation for the Intel Vulkan driver (anv) exists but has not
-been merged yet in Mesa's release branch: https://gitlab.freedesktop.org/mesa/mesa/merge_requests/515 \
-I created a patch containing the commits from the link above merged on top of
-the latest Mesa. I'll try to keep it updated as new versions of Mesa get
-released until the code gets merged upstream.\
-Choose the version and patch it with `patch -Np0`:\
-| [19.2.x](https://mega.nz/#!S4pUgCaL!IZO9vUrVhrdy2SC8K7PaYzeW2kFuLnBqf6XsDTpbq50) | [19.1.x](https://mega.nz/#!a1pznIZQ!bfJaxpuxOeWy4N8qQdZrUHFu5zwWtInFXvDbKWH2MCM) |
+### Relevant links (tracking progress of useful features)
+* https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/1466
+* https://gitlab.freedesktop.org/wayland/wayland-protocols/-/merge_requests/8
