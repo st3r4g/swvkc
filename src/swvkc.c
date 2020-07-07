@@ -311,8 +311,10 @@ void surface_map_notify(struct surface *surface, void *user_data) {
 	struct wl_client *client = wl_resource_get_client(surface->resource);
 	struct wl_resource *keyboard = NULL;
 	keyboard = util_wl_client_get_keyboard(client);
-	if (keyboard)
+	if (keyboard) {
+		set_focused_client(client);
 		wl_keyboard_send_enter(keyboard, 0, surface->resource, &array);
+	}
 	struct wl_resource *pointer = NULL;
 	pointer = util_wl_client_get_pointer(client);
 	if (pointer) {
@@ -358,18 +360,20 @@ void surface_unmap_notify(struct surface *surface, void *user_data) {
 			break;
 	wl_list_remove(&node->link);
 	free(node);
-	if (!wl_list_empty(&server->mapped_surfaces_list)) {
+/*	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct wl_array array;
 		wl_array_init(&array); //Need the currently pressed keys
 		struct surface *new = focused_surface(server);
 		struct wl_resource *keyboard = focused_surface_keyboard(server);
-		if (keyboard)
+		if (keyboard) {
+			set_focused_client(wl_resource_get_client(new->resource));
 			wl_keyboard_send_enter(keyboard, 0, new->resource, &array);
+		}
 		struct wl_resource *pointer = focused_surface_pointer(server);
 		if (pointer)
 			wl_pointer_send_enter(pointer, 0, new->resource,
 			 wl_fixed_from_int(0), wl_fixed_from_int(0));
-	}
+	}*/
 }
 
 void surface_contents_update_notify(struct surface *surface, void *user_data) {
@@ -505,8 +509,10 @@ void server_change_focus(struct server *self, struct surface_node *node) {
 	wl_list_insert(&self->mapped_surfaces_list, &node->link);
 	struct wl_array array;
 	wl_array_init(&array); //Need the currently pressed keys
-	if (node->keyboard)
+	if (node->keyboard) {
+		set_focused_client(wl_resource_get_client(node->surface->resource));
 		wl_keyboard_send_enter(node->keyboard, 0, node->surface->resource, &array);
+	}
 	if (node->pointer)
 		wl_pointer_send_enter(node->pointer, 0, node->surface->resource,
 		 wl_fixed_from_int(0), wl_fixed_from_int(0));
@@ -591,6 +597,10 @@ void input_key_notify(struct aaa *e, void *user_data) {
 		if (steal && e->state == 1) {
 			if (e->key == KEY_ESC) {
 				wl_display_terminate(server->display);
+				break;
+			}
+			if (e->key == KEY_F12) {
+				xxx();
 				break;
 			}
 			errlog("the key '%s' was pressed", e->name);

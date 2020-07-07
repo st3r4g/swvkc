@@ -7,12 +7,14 @@
 
 #include <core/data_source.h>
 
+extern struct wl_resource *selection;
+
 static void offer(struct wl_client *client, struct wl_resource *resource, const
 char *mime_type) {
-	struct wl_list *list = wl_resource_get_user_data(resource);
+	struct data_source *me = wl_resource_get_user_data(resource);
 	struct mime_node *node = malloc(sizeof(struct mime_node));
 	node->mime_type = strdup(mime_type);
-	wl_list_insert(list, &node->link);
+	wl_list_insert(&me->list, &node->link);
 }
 
 static void destroy(struct wl_client *client, struct wl_resource *resource) {
@@ -30,19 +32,32 @@ static const struct wl_data_source_interface impl = {
 	.set_actions = set_actions
 };
 
-void data_source_free(struct wl_resource *resource) {
-	struct wl_list *list = wl_resource_get_user_data(resource);
+#include <stdio.h>
+
+static void data_source_free(struct wl_resource *resource) {
+	struct data_source *me = wl_resource_get_user_data(resource);
+	// If selection is me, invalidate (is it right?)
+	if (selection == resource) {
+		printf("selection is me\n");
+		selection = NULL;
+	} else
+		printf("selection is NOT me\n");
 	struct mime_node *node, *tmp;
-	wl_list_for_each_safe(node, tmp, list, link) {
+	wl_list_for_each_safe(node, tmp, &me->list, link) {
 		wl_list_remove(&node->link);
 		free(node->mime_type);
 		free(node);
 	}
-	free(list);
+	wl_list_remove(&me->link);
+	free(me);
+	// TODO: send info to data_device to destroy all offers created by me?
 }
 
-void data_source_new(struct wl_resource *resource) {
-	struct wl_list *list = malloc(sizeof(struct wl_list));
-	wl_list_init(list);
-	wl_resource_set_implementation(resource, &impl, list, data_source_free);
+struct data_source *data_source_new(struct wl_resource *resource) {
+	struct data_source *me = calloc(1, sizeof(struct data_source));
+	me->resource = resource;
+	wl_list_init(&me->list);
+
+	wl_resource_set_implementation(resource, &impl, me, data_source_free);
+	return me;
 }

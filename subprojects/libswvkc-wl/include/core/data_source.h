@@ -3,4 +3,11 @@ struct mime_node {
 	struct wl_list link;
 };
 
-void data_source_new(struct wl_resource *resource);
+struct data_source {
+	struct wl_resource *resource;
+	struct wl_list link;
+
+	struct wl_list list;
+};
+
+struct data_source *data_source_new(struct wl_resource *resource);

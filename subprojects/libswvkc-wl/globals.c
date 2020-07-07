@@ -24,6 +24,98 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <stdio.h>
+/*
+ * The Wayland objects tree
+ */
+struct node {
+	struct wl_resource *object;
+	struct node *child;
+	struct node *next;
+} root;
+
+struct node *node_add(struct node *parent, struct wl_resource *object) {
+	struct node *new = malloc(sizeof(struct node));
+	new->object = object;
+	new->child = NULL;
+	new->next = NULL;
+
+	struct node *el = parent;
+	if (!el->child) {
+		el->child = new;
+		return new;
+	}
+	for (el = el->child; el->next; )
+		el = el->next;
+	el->next = new;
+	return new;
+}
+
+void node_print(struct node *node) {
+	if (!node->object)
+		return;
+	struct wl_client *cl = wl_resource_get_client(node->object);
+	pid_t pid;
+	uid_t uid;
+	gid_t gid;
+	wl_client_get_credentials(cl, &pid, &uid, &gid);
+	printf("%s@%u (%d)\n", wl_resource_get_class(node->object), wl_resource_get_id(node->object), pid);
+
+}
+
+void tree_print(struct node *root) {
+	struct node *cur = root;
+	while (cur) {
+		node_print(cur);
+		cur = cur->child;
+/*		while (cur) {
+			cur = cur->next;
+		}*/
+	}
+}
+
+struct wl_list data_device_manager_list;
+
+struct fake {
+	struct wl_resource *resource;
+	struct wl_list link;
+};
+
+void print_resource(struct wl_resource *resource, int lv, FILE* s) {
+	const char *tabs[] = {"", "  ", "    "};
+	struct wl_client *cl = wl_resource_get_client(resource);
+	pid_t pid;
+	uid_t uid;
+	gid_t gid;
+	wl_client_get_credentials(cl, &pid, &uid, &gid);
+	printf("%s%s@%u (%d)\n", tabs[lv], wl_resource_get_class(resource), wl_resource_get_id(resource), pid);
+	fprintf(s, "%s%s@%u (%d)\n", tabs[lv], wl_resource_get_class(resource), wl_resource_get_id(resource), pid);
+}
+
+#include <core/data_device.h>
+
+void xxx() {
+	FILE *pappo = fopen("/tmp/swvkclog.txt", "w");
+	struct data_device_manager *x;
+	wl_list_for_each(x, &data_device_manager_list, link) {
+		print_resource(x->resource, 0, pappo);
+		struct data_device *y;
+		wl_list_for_each(y, &x->data_device_list, link) {
+			print_resource(y->resource, 1, pappo);
+			struct fake *w;
+			wl_list_for_each(w, &y->data_offer_list, link) {
+				print_resource(w->resource, 2, pappo);
+			}
+		}
+		struct fake *z;
+		wl_list_for_each(z, &x->data_source_list, link) {
+			print_resource(z->resource, 1, pappo);
+		}
+	}
+	fflush(pappo);
+	fclose(pappo);
+}
+
 /*
  * Defined in main.c
  */
@@ -55,7 +147,8 @@ static void data_device_manager_bind(struct wl_client *client, void *data,
 uint32_t version, uint32_t id) {
 	struct wl_resource *resource = wl_resource_create(client,
 	&wl_data_device_manager_interface, version, id);
-	data_device_manager_new(resource);
+	struct data_device_manager *new = data_device_manager_new(resource);
+	wl_list_insert(&data_device_manager_list, &new->link);
 }
 
 static void seat_bind(struct wl_client *client, void *data, uint32_t version,
@@ -141,6 +234,8 @@ static bool global_filter(const struct wl_client *client, const struct wl_global
 }
 
 void create_globals(struct wl_display *D, bool dmabuf, void *user_data) {
+	wl_list_init(&data_device_manager_list);
+
 	wl_global_create(D, &wl_compositor_interface, 4, user_data,
 	compositor_bind);
 	wl_global_create(D, &wl_subcompositor_interface, 1, 0,
@@ -163,4 +258,48 @@ void create_globals(struct wl_display *D, bool dmabuf, void *user_data) {
 	1, NULL, org_kde_kwin_server_decoration_manager_bind);
 
 //	wl_display_set_global_filter(D, global_filter, 0);
+}
+
+#include <core/data_offer.h>
+
+struct wl_client *focus = NULL;
+struct wl_resource *selection = NULL;
+
+static enum wl_iterator_result set_selection_all(struct wl_resource *resource,
+void *user_data) {
+	if (!strcmp(wl_resource_get_class(resource), "wl_data_device")) {
+		struct wl_client *client = wl_resource_get_client(resource);
+		struct wl_resource *source = user_data;
+		if (selection) {
+		struct wl_resource *offer = wl_resource_create(client,
+		 &wl_data_offer_interface, 3, 0);
+		wl_data_device_send_data_offer(resource, offer);
+		struct data_offer *new = data_offer_new(offer, source);
+		struct data_device *data = wl_resource_get_user_data(resource);
+		wl_list_insert(&data->data_offer_list, &new->link);
+		wl_data_device_send_selection(resource, offer);
+		} else
+		wl_data_device_send_selection(resource, NULL);
+	}
+	return WL_ITERATOR_CONTINUE;
+}
+
+static enum wl_iterator_result cancel(struct wl_resource *resource,
+void *user_data) {
+	if (!strcmp(wl_resource_get_class(resource), "wl_data_source")) {
+		wl_data_source_send_cancelled(resource);
+	}
+	return WL_ITERATOR_CONTINUE;
+}
+
+void set_focused_client(struct wl_client *client) {
+	focus = client;
+/*	struct wl_display *display = wl_client_get_display(client);
+	struct wl_list *list = wl_display_get_client_list(display);
+	struct wl_client *client_;
+	wl_client_for_each(client_, list) {
+		wl_client_for_each_resource(client_, cancel, NULL);
+	}*/
+
+	wl_client_for_each_resource(focus, set_selection_all, selection);
 }
