@@ -80,10 +80,17 @@ int create_file(off_t size) {
 	return fd;
 }
 
-struct input *input_setup(struct input_events input_events) {
+struct input *input_setup(char *kdevpath, char *pdevpath, struct input_events input_events) {
 	printf("├─ INPUT (Linux Input Subsystem)\n");
 	int count, n;
-	struct key_dev *key_devs = find_keyboard_devices(&count);
+	struct key_dev *key_devs;
+	if (kdevpath) {
+		key_devs = calloc(1, sizeof(struct key_dev));
+		key_devs->devnode = kdevpath;
+		count = 1;
+	}
+	else
+		key_devs = find_keyboard_devices(&count);
 
 	if (count > 1) {
 		printf("Found multiple keyboards:\n");
@@ -100,7 +107,15 @@ struct input *input_setup(struct input_events input_events) {
 
 	struct input *S = calloc(1, sizeof(struct input));
 
-	struct key_dev *key_devs_ = find_pointer_devices(&S->n_pointer_fds);
+	struct key_dev *key_devs_;
+	if (pdevpath) {
+		key_devs_ = calloc(1, sizeof(struct key_dev));
+		key_devs_->devnode = pdevpath;
+		S->n_pointer_fds = 1;
+	}
+	else
+		key_devs_ = find_pointer_devices(&S->n_pointer_fds);
+
 	for (int i=0; i<S->n_pointer_fds; i++) {
 		boxlog(" Pointer device node: %s", key_devs_[i].devnode);
 		S->pointer_fds[i] = open(key_devs_[i].devnode, O_RDONLY | O_CLOEXEC);
@@ -116,8 +131,8 @@ struct input *input_setup(struct input_events input_events) {
 		fprintf(stderr, "open %s: %s\n", key_devs[n].devnode, strerror(errno));
 		return 0;
 	}
-	free_keyboard_devices(key_devs, count);
-	free_keyboard_devices(key_devs_, S->n_pointer_fds);
+	free_keyboard_devices(key_devs, kdevpath ? 0 : count);
+	free_keyboard_devices(key_devs_, pdevpath ? 0 : S->n_pointer_fds);
 
 	ioctl(S->key_fd, EVIOCGRAB, 1);
 

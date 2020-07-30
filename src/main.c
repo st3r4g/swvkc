@@ -20,12 +20,42 @@ static void spawn_client(char **argv) {
 	}
 }
 
+const char *usage = "usage: swvkc [-k <devpath>] [-p <devpath>] [client]\n\
+\n\
+Experimental Wayland compositor\n\
+\n\
+positional arguments:\n\
+  client                client to exec\n\
+\n\
+optional arguments:\n\
+  -h                    show this help message and exit\n\
+  -k <devpath>          keyboard device node\n\
+  -p <devpath>          pointer device node\n";
+
 int main(int argc, char *argv[]) {
-	if (swvkc_initialize())
+	char *kdevpath = NULL, *pdevpath = NULL;
+
+	int opt;
+	while ((opt = getopt(argc, argv, "hk:p:")) != -1) {
+		switch (opt) {
+		case 'k': kdevpath = optarg; break;
+		case 'p': pdevpath = optarg; break;
+		default:
+			printf(usage);
+			return EXIT_FAILURE;
+		}
+	}
+
+	if (kdevpath)
+	printf("%s\n", kdevpath);
+	if (pdevpath)
+	printf("%s\n", pdevpath);
+
+	if (swvkc_initialize(kdevpath, pdevpath))
 		return EXIT_FAILURE;
 
-	if (argc > 1)
-		spawn_client(argv+1);
+	if (argc > optind)
+		spawn_client(argv+optind);
 
 	swvkc_run();
 

@@ -110,7 +110,7 @@ int timed_commit(void *data) {
 }
 
 static struct server *swvkc; //TODO
-int swvkc_initialize() {
+int swvkc_initialize(char *kdevpath, char *pdevpath) {
 	struct server *server = calloc(1, sizeof(struct server));
 	swvkc = server;
 	wl_list_init(&server->mapped_surfaces_list);
@@ -140,7 +140,7 @@ int swvkc_initialize() {
 		.button = input_button_notify,
 		.user_data = server
 	};
-	server->input = input_setup(input_events);
+	server->input = input_setup(kdevpath, pdevpath, input_events);
 	if (!server->input) {
 		errlog("Could not setup input");
 		return EXIT_FAILURE;
