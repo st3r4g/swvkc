@@ -43,6 +43,6 @@ struct pointer_ {
 
 	int hotspot_x;
 	int hotspot_y;
-} pointer;
+};
 
 void input_release(struct input *S);

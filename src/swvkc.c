@@ -28,6 +28,8 @@
 #include <string.h>
 #include <strings.h>
 
+extern struct pointer_ pointer;
+
 struct server {
 	struct wl_display *display;
 

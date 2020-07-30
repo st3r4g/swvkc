@@ -15,6 +15,8 @@
 #include <linux/input.h>
 #include <xkbcommon/xkbcommon.h>
 
+struct pointer_ pointer;
+
 struct input {
 	int key_fd;
 	int pointer_fds[16];
