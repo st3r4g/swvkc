@@ -212,6 +212,20 @@ void request_vblank(struct screen *screen) {
 		fprintf(stderr, "drmWaitVBlank (relative) failed\n");
 	}
 }
+static int read_cache(uint32_t *connector_id, uint32_t *crtc_id) {
+	FILE *f1 = fopen("/home/stefano/.cache/swvkc/connector_id", "r");
+	FILE *f2 = fopen("/home/stefano/.cache/swvkc/crtc_id", "r");
+	if (!f1 || !f2)
+		return -1;
+	char str[8];
+	fgets(str, 8, f1);
+	*connector_id = strtoul(str, NULL, 10);
+	fgets(str, 8, f2);
+	*crtc_id = strtoul(str, NULL, 10);
+	fclose(f1);
+	fclose(f2);
+	return 0;
+}
 
 int drm_setup(struct screen *S) {
 	char *devpath = boot_gpu_devpath();
@@ -236,44 +250,49 @@ int drm_setup(struct screen *S) {
 		return -1;
 	}
 	
-	drmModeRes *res = drmModeGetResources(S->gpu_fd);
-	drmModeConnector **connected =
-	 malloc(res->count_connectors*sizeof(drmModeConnector));
-	int count = 0;
-	for (int i=0; i<res->count_connectors; i++) {
-/* NOTE: This function takes a lot of time (>100ms) for some connectors, biggest
- * contributor to startup time. */
-		drmModeConnector *conn = drmModeGetConnector(S->gpu_fd,
-		res->connectors[i]);
-		if (conn->connection == DRM_MODE_CONNECTED) {
-			connected[count] = conn;
-			count++;
-		} else
-			drmModeFreeConnector(conn);
-	}
-	drmModeFreeResources(res);
-	int n;
-	if (count > 1) {
-		printf("Found multiple displays:\n");
-		for (int i=0; i<count; i++) {
-			printf("(%d) [%d]\n", i, connected[i]->connector_id);
+	uint32_t x1, x2;
+	if (read_cache(&x1, &x2) < 0) {
+		drmModeRes *res = drmModeGetResources(S->gpu_fd);
+		drmModeConnector **connected =
+		 malloc(res->count_connectors*sizeof(drmModeConnector));
+		int count = 0;
+		for (int i=0; i<res->count_connectors; i++) {
+	/* NOTE: This function takes a lot of time (>100ms) for some connectors, biggest
+	 * contributor to startup time. */
+			drmModeConnector *conn = drmModeGetConnector(S->gpu_fd,
+			res->connectors[i]);
+			if (conn->connection == DRM_MODE_CONNECTED) {
+				connected[count] = conn;
+				count++;
+			} else
+				drmModeFreeConnector(conn);
 		}
-		printf("Choose one: ");
-		scanf("%d", &n);
-	} else {
-		n = 0;
+		drmModeFreeResources(res);
+		int n;
+		if (count > 1) {
+			printf("Found multiple displays:\n");
+			for (int i=0; i<count; i++) {
+				printf("(%d) [%d]\n", i, connected[i]->connector_id);
+			}
+			printf("Choose one: ");
+			scanf("%d", &n);
+		} else {
+			n = 0;
+		}
+		drmModeCrtc *crtc = get_crtc_from_conn(S->gpu_fd, connected[n]);
+		boxlog("Display connector: %s", conn_get_name(connected[n]->connector_type));
+		boxlog("             mode: %s@%dHz", crtc->mode.name, crtc->mode.vrefresh);
+	//	boxlog("vrefresh: %d, connected: %d", crtc->mode.vrefresh,
+	//	connected[n]->connector_id);
+		x1 = connected[n]->connector_id;
+		x2 = crtc->crtc_id;
+		drmModeFreeCrtc(crtc);
 	}
-	drmModeCrtc *crtc = get_crtc_from_conn(S->gpu_fd, connected[n]);
-	boxlog("Display connector: %s", conn_get_name(connected[n]->connector_type));
-	boxlog("             mode: %s@%dHz", crtc->mode.name, crtc->mode.vrefresh);
-//	boxlog("vrefresh: %d, connected: %d", crtc->mode.vrefresh,
-//	connected[n]->connector_id);
 
-	S->crtc_id = crtc->crtc_id;
-	simple_modeset(S, crtc->crtc_id); // TODO remove
-	planes(S, crtc->crtc_id);
-	drmModeFreeCrtc(crtc);
-	S->props = find_prop_ids(S->gpu_fd, S->plane_id, connected[n]->connector_id, S->crtc_id);
+	S->crtc_id = x2;
+	simple_modeset(S, S->crtc_id); // TODO remove
+	planes(S, S->crtc_id);
+	S->props = find_prop_ids(S->gpu_fd, S->plane_id, x1, S->crtc_id);
 	S->props_plane_fb_id = S->props.plane.fb_id;
 
 //	boxlog("%d %d %d", S->plane_id, S->props_plane_fb_id, S->old_fb_id);
