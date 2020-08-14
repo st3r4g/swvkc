@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/param.h>
 #include <unistd.h>
 
 #include <linux/input.h>
@@ -252,7 +253,7 @@ int touchpad_ev_handler(int fd, uint32_t mask, void *data) {
 		return 0;
 	} else if (ev.type == EV_ABS && ev.code == ABS_X) {
 		if (motion_x) {
-			pointer.x += (ev.value - abs_x)/2;
+			pointer.x = MAX(0, pointer.x + (ev.value - abs_x)/2);
 			S->input_events.motion(0, S->input_events.user_data);
 		} else
 			motion_x = true;
@@ -260,7 +261,7 @@ int touchpad_ev_handler(int fd, uint32_t mask, void *data) {
 		return 0;
 	} else if (ev.type == EV_ABS && ev.code == ABS_Y) {
 		if (motion_y) {
-			pointer.y += (ev.value - abs_y)/2;
+			pointer.y = MAX(0, pointer.y + (ev.value - abs_y)/2);
 			S->input_events.motion(0, S->input_events.user_data);
 		} else
 			motion_y = true;
@@ -274,11 +275,11 @@ int touchpad_ev_handler(int fd, uint32_t mask, void *data) {
 		 S->input_events.user_data);
 		return 0;
 	} else if (ev.type == EV_REL && ev.code == REL_X) {
-		pointer.x += ev.value;
+		pointer.x = MAX(0, pointer.x + ev.value);
 		S->input_events.motion(0, S->input_events.user_data);
 		return 0;
 	} else if (ev.type == EV_REL && ev.code == REL_Y) {
-		pointer.y += ev.value;
+		pointer.y = MAX(0, pointer.x + ev.value);
 		S->input_events.motion(0, S->input_events.user_data);
 		return 0;
 	} else
