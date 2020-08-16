@@ -533,7 +533,7 @@ no_alpha) {
 		return NULL;
 	}
 
-	struct fb *fb = malloc(sizeof(fb));
+	struct fb *fb = malloc(sizeof(struct fb));
 	fb->id = buf_id;
 	fb->buffer = buffer;
 	return fb;
