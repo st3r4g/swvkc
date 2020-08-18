@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
 		case 'k': kdevpath = optarg; break;
 		case 'p': pdevpath = optarg; break;
 		default:
-			printf(usage);
+			printf("%s", usage);
 			return EXIT_FAILURE;
 		}
 	}
