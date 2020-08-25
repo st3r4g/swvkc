@@ -279,7 +279,7 @@ int touchpad_ev_handler(int fd, uint32_t mask, void *data) {
 		S->input_events.motion(0, S->input_events.user_data);
 		return 0;
 	} else if (ev.type == EV_REL && ev.code == REL_Y) {
-		pointer.y = MAX(0, pointer.x + ev.value);
+		pointer.y = MAX(0, pointer.y + ev.value);
 		S->input_events.motion(0, S->input_events.user_data);
 		return 0;
 	} else
