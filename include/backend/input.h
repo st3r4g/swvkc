@@ -13,7 +13,7 @@ struct aaa {
 
 typedef void (*input_key_event_t)(struct aaa *, void *);
 typedef void (*input_modifers_event_t)(struct aaa *, void *);
-typedef void (*input_motion_event_t)(unsigned int, void *);
+typedef void (*input_motion_event_t)(unsigned int, int, int, void *);
 typedef void (*input_frame_event_t)(void *);
 typedef void (*input_button_event_t)(unsigned int, unsigned int, unsigned int,
 void *);
