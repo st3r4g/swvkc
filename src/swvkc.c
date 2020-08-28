@@ -20,7 +20,7 @@
 #include <extensions/xdg_shell/xdg_toplevel.h>
 #include <util/log.h>
 #include <util/util.h>
-
+#include <sys/param.h>
 #include <linux/input-event-codes.h>
 
 #include <stdio.h>
@@ -28,7 +28,7 @@
 #include <string.h>
 #include <strings.h>
 
-extern struct pointer_ pointer;
+struct pointer_ pointer;
 
 struct server {
 	struct wl_display *display;
@@ -71,7 +71,7 @@ void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip);
 int gpu_ev_handler(int fd, uint32_t mask, void *data);
 void input_key_notify(struct aaa *e, void *user_data);
-void input_motion_notify(unsigned int time, void *user_data);
+void input_motion_notify(unsigned int time, int dx, int dy, void *user_data);
 void input_frame_notify(void *user_data);
 void input_button_notify(unsigned int time, unsigned int button, unsigned int
 state, void *user_data);
@@ -618,8 +618,16 @@ void input_key_notify(struct aaa *e, void *user_data) {
 	}
 }
 
-void input_motion_notify(unsigned int time, void *user_data) {
+void input_motion_notify(unsigned int time, int dx, int dy, void *user_data) {
 	struct server *server = user_data;
+	struct box screen_size = screen_get_dimensions(server->screen);
+
+	pointer.x += dx;
+	pointer.y += dy;
+
+	pointer.x = MAX(screen_size.x, MIN(pointer.x, screen_size.width));
+	pointer.y = MAX(screen_size.y, MIN(pointer.y, screen_size.height));
+
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
 		struct wl_resource *pointer_ = focused_surface_pointer(server);
 		if (pointer_)

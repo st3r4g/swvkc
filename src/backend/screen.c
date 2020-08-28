@@ -475,6 +475,7 @@ int screen_get_gpu_fd(struct screen *S) {
 
 struct box screen_get_dimensions(struct screen *S) {
 	struct box box;
+	box.x = 0, box.y = 0;
 	drmModeFB *old_fb = drmModeGetFB(S->gpu_fd, S->old_fb_id);
 	box.width = old_fb->width, box.height = old_fb->height;
 	drmModeFreeFB(old_fb);
