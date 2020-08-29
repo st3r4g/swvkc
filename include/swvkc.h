@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-int swvkc_initialize(char *kdevpath, char *pdevpath);
+int swvkc_initialize(char *gdevpath, char *kdevpath, char *pdevpath);
 void swvkc_run();
 void swvkc_terminate();
 

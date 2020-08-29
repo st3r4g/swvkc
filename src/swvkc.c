@@ -112,7 +112,7 @@ int timed_commit(void *data) {
 }
 
 static struct server *swvkc; //TODO
-int swvkc_initialize(char *kdevpath, char *pdevpath) {
+int swvkc_initialize(char *gdevpath, char *kdevpath, char *pdevpath) {
 	struct server *server = calloc(1, sizeof(struct server));
 	swvkc = server;
 	wl_list_init(&server->mapped_surfaces_list);
@@ -125,7 +125,7 @@ int swvkc_initialize(char *kdevpath, char *pdevpath) {
 		return EXIT_FAILURE;
 	}
 
-	server->screen = screen_setup(vblank_notify, server, dmabuf_mod);
+	server->screen = screen_setup(gdevpath, vblank_notify, server, dmabuf_mod);
 	if (!server->screen) {
 		errlog("Could not setup screen");
 		return EXIT_FAILURE;

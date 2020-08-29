@@ -92,13 +92,13 @@ struct screen {
 	bool pending_page_flip;
 };
 
-int drm_setup(struct screen *);
+int drm_setup(char *gdevpath, struct screen *);
 struct fb *screen_fb_create_main(struct screen *screen, int width, int height,
 bool linear, bool no_alpha);
 void screen_fb_destroy(struct screen *screen, struct fb *fb);
 const char *conn_get_name(uint32_t type_id);
 
-struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
+struct screen *screen_setup(char *gdevpath, void (*vblank_notify)(int,unsigned int,unsigned int,
 unsigned int, void*, bool), void *user_data, bool dmabuf_mod) {
 	printf("├─ VIDEO (Direct Rendering Manager)\n");
 	struct screen *screen = calloc(1, sizeof(struct screen));
@@ -106,7 +106,7 @@ unsigned int, void*, bool), void *user_data, bool dmabuf_mod) {
 	screen->vblank_notify = vblank_notify;
 	screen->user_data = user_data;
 
-	if (drm_setup(screen) < 0) {
+	if (drm_setup(gdevpath, screen) < 0) {
 		return NULL;
 	}
 
@@ -224,8 +224,13 @@ static int read_cache(uint32_t *connector_id, uint32_t *crtc_id) {
 	return 0;
 }
 
-int drm_setup(struct screen *S) {
-	char *devpath = boot_gpu_devpath();
+int drm_setup(char *gdevpath, struct screen *S) {
+	char *devpath;
+	if (gdevpath) {
+		devpath = gdevpath;
+	} else {
+		devpath = boot_gpu_devpath();
+	}
 	if (!devpath) {
 		fprintf(stderr, "No suitable DRM device found");
 		return -1;
