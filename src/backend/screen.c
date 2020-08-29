@@ -62,8 +62,6 @@ struct fb_node {
 	struct wl_list link;
 };
 
-struct fb *cursor; //TODO: remove
-
 struct screen {
 	// DRM
 	int gpu_fd;
@@ -120,7 +118,6 @@ unsigned int, void*, bool), void *user_data, bool dmabuf_mod) {
 	 screen_size.height, !dmabuf_mod, true);
 	screen->cursor = screen_fb_create_main(screen, 64, 64, true,
 	 false);
-	cursor = screen->cursor; // TODO remove
 
 	return screen;
 }
@@ -417,7 +414,7 @@ void cursor_on_cursor(struct screen *S, int x, int y) {
 	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.crtc_h, 64); // CRTC_H
 	drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props.plane.crtc_id, S->crtc_id); // CRTC_ID
 
-	if (drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props_plane_fb_id, cursor->id) < 0)
+	if (drmModeAtomicAddProperty(S->req, S->cursor_plane_id, S->props_plane_fb_id, S->cursor->id) < 0)
 		fprintf(stderr, "atomic add property failed\n");
 }
 

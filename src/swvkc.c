@@ -28,7 +28,7 @@
 #include <string.h>
 #include <strings.h>
 
-struct pointer_ pointer;
+struct cursor cursor;
 
 struct server {
 	struct wl_display *display;
@@ -386,8 +386,8 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 	if (surface->role == ROLE_CURSOR) {
 		shmbuf_cursor(buffer);
 		struct pointer *p = surface->role_object;
-		pointer.hotspot_x = p->hotspot_x;
-		pointer.hotspot_y = p->hotspot_y;
+		cursor.hotspot_x = p->hotspot_x;
+		cursor.hotspot_y = p->hotspot_y;
 		errlog("cursor update %d %d", p->hotspot_x, p->hotspot_y);
 		return;
 	}
@@ -622,38 +622,38 @@ void input_motion_notify(unsigned int time, int dx, int dy, void *user_data) {
 	struct server *server = user_data;
 	struct box screen_size = screen_get_dimensions(server->screen);
 
-	pointer.x += dx;
-	pointer.y += dy;
+	cursor.x += dx;
+	cursor.y += dy;
 
-	pointer.x = MAX(screen_size.x, MIN(pointer.x, screen_size.width));
-	pointer.y = MAX(screen_size.y, MIN(pointer.y, screen_size.height));
+	cursor.x = MAX(screen_size.x, MIN(cursor.x, screen_size.width));
+	cursor.y = MAX(screen_size.y, MIN(cursor.y, screen_size.height));
 
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
-		struct wl_resource *pointer_ = focused_surface_pointer(server);
-		if (pointer_)
-			wl_pointer_send_motion(pointer_, time,
-			 wl_fixed_from_int(pointer.x),
-			  wl_fixed_from_int(pointer.y));
+		struct wl_resource *pointer = focused_surface_pointer(server);
+		if (pointer)
+			wl_pointer_send_motion(pointer, time,
+			 wl_fixed_from_int(cursor.x),
+			  wl_fixed_from_int(cursor.y));
 	}
 }
 
 void input_frame_notify(void *user_data) {
 	struct server *server = user_data;
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
-		struct wl_resource *pointer_ = focused_surface_pointer(server);
-		if (pointer_ && wl_resource_get_version(pointer_) >= WL_POINTER_FRAME_SINCE_VERSION)
-			wl_pointer_send_frame(pointer_);
+		struct wl_resource *pointer = focused_surface_pointer(server);
+		if (pointer && wl_resource_get_version(pointer) >= WL_POINTER_FRAME_SINCE_VERSION)
+			wl_pointer_send_frame(pointer);
 		/*
 		 * Temporary way to display cursor motion
 		 */
-		cursor_on_cursor(server->screen, pointer.x-pointer.hotspot_x,
-		 pointer.y-pointer.hotspot_y);
+		cursor_on_cursor(server->screen, cursor.x-cursor.hotspot_x,
+		 cursor.y-cursor.hotspot_y);
 		update = true;
 /*		struct surface *surface = focused_surface(server);
 		if (!surface->frame && !frame_sent && !screen_page_flip_is_pending(server->screen)) {
 			alloc(server->screen);
-			cursor_on_cursor(server->screen, pointer.x-pointer.hotspot_x,
-			 pointer.y-pointer.hotspot_y);
+			cursor_on_cursor(server->screen, cursor.x-cursor.hotspot_x,
+			 cursor.y-cursor.hotspot_y);
 			screen_atomic_commit(server->screen, false, NULL);
 		}*/
 	}
@@ -663,8 +663,8 @@ void input_button_notify(unsigned int time, unsigned int button, unsigned int
 state, void *user_data) {
 	struct server *server = user_data;
 	if (!wl_list_empty(&server->mapped_surfaces_list)) {
-		struct wl_resource *pointer_ = focused_surface_pointer(server);
-		if (pointer_ && wl_resource_get_version(pointer_) >= WL_POINTER_BUTTON_SINCE_VERSION)
-			wl_pointer_send_button(pointer_, 0, time, button, state);
+		struct wl_resource *pointer = focused_surface_pointer(server);
+		if (pointer && wl_resource_get_version(pointer) >= WL_POINTER_BUTTON_SINCE_VERSION)
+			wl_pointer_send_button(pointer, 0, time, button, state);
 	}
 }

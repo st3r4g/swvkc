@@ -1,5 +1,3 @@
-#include <stdint.h>
-
 struct aaa {
 	unsigned int key;
 	unsigned int state;
@@ -36,13 +34,4 @@ int input_get_poi_fd_n(struct input *S);
 int input_get_poi_fd(struct input *S, int i);
 unsigned int input_get_keymap_fd(struct input *S);
 unsigned int input_get_keymap_size(struct input *S);
-
-struct pointer_ {
-	int32_t x;
-	int32_t y;
-
-	int hotspot_x;
-	int hotspot_y;
-};
-
 void input_release(struct input *S);
