@@ -234,10 +234,15 @@ int key_ev_handler(int fd, uint32_t mask, void *data) {
 	return 0;
 }
 
-bool motion_x = false;
-bool motion_y = false;
 int32_t abs_x = 0;
 int32_t abs_y = 0;
+/*
+ * For touchpads, we track beginning/end of the gesture via motion_{x,y}
+ * motion_{x,y} is true while finger is sliding on touchpad, and becomes false
+ * when the finger is lifted
+ */
+bool motion_x = false;
+bool motion_y = false;
 
 int touchpad_ev_handler(int fd, uint32_t mask, void *data) {
 	struct input *S = data;
