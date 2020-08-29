@@ -65,7 +65,7 @@ struct lss_node {
 };
 
 extern int key_ev_handler(int, uint32_t, void *);
-extern int touchpad_ev_handler(int, uint32_t, void *);
+extern int pointer_ev_handler(int, uint32_t, void *);
 
 void vblank_notify(int gpu_fd, unsigned int sequence, unsigned int
 tv_sec, unsigned int tv_usec, void *user_data, bool vblank_has_page_flip);
@@ -184,7 +184,7 @@ int swvkc_initialize(char *kdevpath, char *pdevpath) {
 	WL_EVENT_READABLE, key_ev_handler, server->input);
 	for (int i=0; i<input_get_poi_fd_n(server->input); i++)
 		wl_event_loop_add_fd(el, input_get_poi_fd(server->input, i),
-		 WL_EVENT_READABLE, touchpad_ev_handler, server->input);
+		 WL_EVENT_READABLE, pointer_ev_handler, server->input);
 	server->commit = wl_event_loop_add_timer(el, timed_commit, server);
 
 //	screen_post(server->screen, 0);

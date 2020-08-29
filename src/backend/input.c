@@ -244,7 +244,7 @@ int32_t abs_y = 0;
 bool motion_x = false;
 bool motion_y = false;
 
-int touchpad_ev_handler(int fd, uint32_t mask, void *data) {
+int pointer_ev_handler(int fd, uint32_t mask, void *data) {
 	struct input *S = data;
 
 	struct input_event ev;
