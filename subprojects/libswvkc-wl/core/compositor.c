@@ -2,6 +2,9 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include <util/log.h>
+
 
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
@@ -29,7 +32,18 @@ static const struct wl_compositor_interface impl = {
 	.create_region = compositor_create_region
 };
 
+static enum wl_iterator_result set_selection_all(struct wl_resource *resource,
+void *user_data) {
+	errlog("%d", wl_resource_get_id(resource));
+/*	if (!strcmp(wl_resource_get_class(resource), "wl_data_device")) {
+		wl_resource_get_client(resource);
+	}*/
+	return WL_ITERATOR_CONTINUE;
+}
 void compositor_free(struct wl_resource *resource) {
+	struct wl_client *client = wl_resource_get_client(resource);
+	wl_client_for_each_resource(client, set_selection_all, resource);
+
 	struct compositor *compositor = wl_resource_get_user_data(resource);
 	free(compositor);
 }

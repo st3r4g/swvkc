@@ -9,7 +9,7 @@
 #include <vulkan/vulkan.h>
 #include <util/log.h>
 
-const bool DEBUG = false;
+const bool DEBUG = true;
 
 struct global {
 	bool dmabuf_mod;
