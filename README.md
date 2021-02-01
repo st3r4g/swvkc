@@ -1,26 +1,16 @@
 # swvkc (temporary name)
-`swvkc` is a Wayland compositor which sacrifices features for performance and
-correctness.\
+`swvkc` is an experimental Wayland compositor meant to explore the possibility
+of using Vulkan as a rendering backend.\
 `swvkc` prioritizes direct scanout of client buffers when possible. When
 compositing needs to be done, it renders to the screen with simple copy commands
 from the Vulkan API.\
-An explicit list of the goals of the project:
+Some goals/directions of the project:
 * Do the minimal work necessary to display client buffers, do not introduce
   screen tearing/stuttering or input lag.
-* Strictly adhere to the Wayland protocol specification in order to minimize
-  undefined behaviour and assure stability.
-* Write simple, readable and standardized code.
-
-Things like simple window management features will of course eventually be
-implemented but I don't want to rush to avoid bugs.
+* Stick to minimal window management features.
+* Try to write simple, easy to understand code.
 
 ## Current status
-`swvkc` is in Alpha stage. The whole idea of a DRM+Vulkan compositor was quite
-experimental, so I quickly sketched out things to see if they worked without
-caring too much for correctness. Now I've reached a point in which the program
-is actually usable (with some caveats), so experimentation and consolidation
-will proceed in parallel.\
-Some considerations:
 * The mechanism to import both shm and dma buffers into Vulkan has been quickly
   sketched, but it needs to be made more robust (some assumptions about the
   buffer formats should be removed too).
@@ -34,7 +24,6 @@ Some considerations:
 * Only one surface is focused and displayed at a time
 * One single client can be run at startup (I suggest a terminal)
 * Focus can be changed (see Usage notes)
-* Keyboard only (no pointer) [coming soon...]
 * No popups [coming soon...]
 * No clipboard [coming soon...]
 
@@ -64,7 +53,7 @@ Some considerations:
 ## Building
 After installing `meson`, run the command:
 ```
-$ meson -Dbuildtype=release -Db_lto=true build
+$ meson build
 ```
 and install any missing dependency that is reported. Then run:
 ```
