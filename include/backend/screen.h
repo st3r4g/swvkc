@@ -13,7 +13,8 @@ struct fb;
  */
 
 struct screen *screen_setup(void (*vblank_notify)(int,unsigned int,unsigned int,
-unsigned int, void*, bool), void *user_data, bool dmabuf_mod);
+unsigned int, void*, bool), void *user_data, bool dmabuf_mod, int64_t major,
+int64_t minor);
 
 void drm_handle_event(int fd);
 

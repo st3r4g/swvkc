@@ -6,34 +6,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-char *boot_gpu_devpath() {
+char *gpu_devpath(int64_t major, int64_t minor) {
 	char *devpath = 0;
 	struct udev *udev = udev_new();
-	struct udev_enumerate *enu = udev_enumerate_new(udev);
-	udev_enumerate_add_match_sysattr(enu, "boot_vga", "1");
-	udev_enumerate_scan_devices(enu);
-	struct udev_list_entry *cur;
-	udev_list_entry_foreach(cur, udev_enumerate_get_list_entry(enu)) {
-		struct udev_device *dev = udev_device_new_from_syspath(udev,
-		udev_list_entry_get_name(cur));
-		udev_enumerate_unref(enu);
-		enu = udev_enumerate_new(udev);
-		udev_enumerate_add_match_parent(enu, dev);
-		udev_enumerate_add_match_sysname(enu, "card[0-9]");
-		udev_enumerate_scan_devices(enu);
-		udev_device_unref(dev);
-		udev_list_entry_foreach(cur, udev_enumerate_get_list_entry(enu)) {
-			dev = udev_device_new_from_syspath(udev,
-			udev_list_entry_get_name(cur));
-			const char *str = udev_device_get_devnode(dev);
-			devpath = malloc((strlen(str)+1)*sizeof(char));
-			strcpy(devpath, str);
-			udev_device_unref(dev);
-			udev_enumerate_unref(enu);
-			break;
-		}
-		break;
-	}
+	dev_t dev = makedev(major, minor);
+	struct udev_device *udev_dev = udev_device_new_from_devnum(udev, 'c', dev);
+	devpath = strdup(udev_device_get_devnode(udev_dev));
+	udev_device_unref(udev_dev);
+	udev_unref(udev);
 	return devpath;
 }
 

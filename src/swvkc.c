@@ -119,13 +119,15 @@ int swvkc_initialize(char *kdevpath, char *pdevpath) {
 	wl_list_init(&server->bufres_list);
 	wl_list_init(&server->lss_list);
 
+	int64_t major, minor;
+
 	bool dmabuf = false, dmabuf_mod = false;
-	if (vulkan_init(&dmabuf, &dmabuf_mod) < 0) {
+	if (vulkan_init(&dmabuf, &dmabuf_mod, &major, &minor) < 0) {
 		errlog("Could not setup the renderer (Vulkan)");
 		return EXIT_FAILURE;
 	}
 
-	server->screen = screen_setup(vblank_notify, server, dmabuf_mod);
+	server->screen = screen_setup(vblank_notify, server, dmabuf_mod, major, minor);
 	if (!server->screen) {
 		errlog("Could not setup screen");
 		return EXIT_FAILURE;
