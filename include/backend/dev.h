@@ -1,9 +1,10 @@
+#include <stdint.h>
 struct key_dev {
 	char *devnode;
 	char *name;
 };
 
-char *boot_gpu_devpath();
+char *gpu_devpath(int64_t major, int64_t minor);
 
 struct key_dev *find_keyboard_devices(int *count);
 struct key_dev *find_pointer_devices(int *count);

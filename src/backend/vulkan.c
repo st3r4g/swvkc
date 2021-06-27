@@ -57,13 +57,14 @@ VkInstance create_instance(bool *dmabuf, bool *dmabuf_mod) {
 	qsort(ext_p, n_ext, sizeof(VkExtensionProperties), compare_ext_names);
 
 	check_ext(n_ext, ext_p, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-	*dmabuf = check_ext(n_ext, ext_p, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+	check_ext(n_ext, ext_p, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+	*dmabuf = check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME);
 	*dmabuf_mod = *dmabuf;
 
 	const char *enabled_ext_none[] = {
-		VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+		VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
 	};
 
 	const char *enabled_ext_dmabuf[] = {
@@ -143,7 +144,7 @@ const char *type_to_string(enum VkPhysicalDeviceType type) {
 	}
 }
 
-VkPhysicalDevice get_physical_device(VkInstance inst) {
+VkPhysicalDevice get_physical_device(VkInstance inst, int64_t *major, int64_t *minor) {
 	uint32_t n = 1;
 	VkPhysicalDevice pdev;
 	vkEnumeratePhysicalDevices(inst, &n, &pdev);
@@ -152,18 +153,30 @@ VkPhysicalDevice get_physical_device(VkInstance inst) {
 		return VK_NULL_HANDLE;
 	}
 
-/*	struct VkPhysicalDevicePCIBusInfoPropertiesEXT busProps;
-	struct VkPhysicalDeviceProperties2 aa = {
+	VkPhysicalDeviceDrmPropertiesEXT drm_props = {
+    		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT,
+	};
+
+	VkPhysicalDeviceProperties2 dev_props = {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-		.pNext = &busProps,
-	}; XXX broken
-	vkGetPhysicalDeviceProperties22(pdev, &aa);*/
+		.pNext = &drm_props,
+	};
+	vkGetPhysicalDeviceProperties2(pdev, &dev_props);
 	VkPhysicalDeviceProperties props;
 	vkGetPhysicalDeviceProperties(pdev, &props);
 	boxlog("Device name: %s", props.deviceName);
 	boxlog("       type: %s", type_to_string(props.deviceType));
-/*	errlog("%d %d %d %d", busProps.pciDomain, busProps.pciBus,
-	 busProps.pciDevice, busProps.pciFunction);*/
+	if (drm_props.hasPrimary) {
+		boxlog("    primary: %d:%d", drm_props.primaryMajor, drm_props.primaryMinor);
+		*major = drm_props.primaryMajor;
+		*minor = drm_props.primaryMinor;
+	} else {
+		errlog("failed to get primary device");
+		return VK_NULL_HANDLE;
+	}
+	if (drm_props.hasRender)
+		boxlog("     render: %d:%d", drm_props.renderMajor, drm_props.renderMinor);
+
 /*	errlog("Device API version %d.%d.%d",
 	 VK_VERSION_MAJOR(props.apiVersion),
 	 VK_VERSION_MINOR(props.apiVersion),
@@ -184,6 +197,7 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 	vkEnumerateDeviceExtensionProperties(pdev, NULL, &n_ext, ext_p);
 	qsort(ext_p, n_ext, sizeof(VkExtensionProperties), compare_ext_names);
 
+	check_ext(n_ext, ext_p, VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME);
 	*dmabuf = check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME);
@@ -198,6 +212,7 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 	*dmabuf_mod &= check_ext(n_ext, ext_p, VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME);
 
 	const char *enabled_ext_dmabuf[] = {
+    		VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
 		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
@@ -206,6 +221,7 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 	};
 
 	const char *enabled_ext_dmabuf_mod[] = {
+    		VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
 		VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
 		VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
@@ -602,7 +618,7 @@ VkCommandBuffer commands[2] = {0,0};
 VkImage screen_image[2];
 
 
-int vulkan_init(bool *dmabuf, bool *dmabuf_mod) {
+int vulkan_init(bool *dmabuf, bool *dmabuf_mod, int64_t *major, int64_t *minor) {
 	printf("┌─ RENDERER (Vulkan)\n");
 	bool dmabuf_inst, dmabuf_mod_inst;
 	VkInstance instance = create_instance(&dmabuf_inst, &dmabuf_mod_inst);
@@ -611,7 +627,7 @@ int vulkan_init(bool *dmabuf, bool *dmabuf_mod) {
 		return -1;
 	}
 
-	physical_device = get_physical_device(instance);
+	physical_device = get_physical_device(instance, major, minor);
 	if (physical_device == VK_NULL_HANDLE) {
 		errlog("get_physical_device failed");
 		return -1;
