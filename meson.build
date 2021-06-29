@@ -15,7 +15,7 @@ dep += dependency('gbm') # required by egl
 dep += dependency('libdrm')
 dep += dependency('libdrm_intel', required: bufmgr == 'intel')
 dep += dependency('libudev')
-dep += dependency('vulkan')
+dep += dependency('vulkan', version : '>=1.2.182')
 dep += dependency('xkbcommon')
 
 inc = include_directories('include')

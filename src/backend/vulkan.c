@@ -144,7 +144,7 @@ const char *type_to_string(enum VkPhysicalDeviceType type) {
 	}
 }
 
-VkPhysicalDevice get_physical_device(VkInstance inst, int64_t *major, int64_t *minor) {
+VkPhysicalDevice get_physical_device(VkInstance inst) {
 	uint32_t n = 1;
 	VkPhysicalDevice pdev;
 	vkEnumeratePhysicalDevices(inst, &n, &pdev);
@@ -153,29 +153,9 @@ VkPhysicalDevice get_physical_device(VkInstance inst, int64_t *major, int64_t *m
 		return VK_NULL_HANDLE;
 	}
 
-	VkPhysicalDeviceDrmPropertiesEXT drm_props = {
-    		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT,
-	};
-
-	VkPhysicalDeviceProperties2 dev_props = {
-		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-		.pNext = &drm_props,
-	};
-	vkGetPhysicalDeviceProperties2(pdev, &dev_props);
-	VkPhysicalDeviceProperties props;
-	vkGetPhysicalDeviceProperties(pdev, &props);
-	boxlog("Device name: %s", props.deviceName);
-	boxlog("       type: %s", type_to_string(props.deviceType));
-	if (drm_props.hasPrimary) {
-		boxlog("    primary: %d:%d", drm_props.primaryMajor, drm_props.primaryMinor);
-		*major = drm_props.primaryMajor;
-		*minor = drm_props.primaryMinor;
-	} else {
-		errlog("failed to get primary device");
-		return VK_NULL_HANDLE;
-	}
-	if (drm_props.hasRender)
-		boxlog("     render: %d:%d", drm_props.renderMajor, drm_props.renderMinor);
+	/* If `VK_EXT_physical_device_drm` were an instance extension,
+         * we could have used it here.
+         */
 
 /*	errlog("Device API version %d.%d.%d",
 	 VK_VERSION_MAJOR(props.apiVersion),
@@ -190,14 +170,17 @@ VkPhysicalDevice get_physical_device(VkInstance inst, int64_t *major, int64_t *m
 	return pdev;
 }
 
-VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, bool *dmabuf_mod) {
+VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, bool *dmabuf_mod, int64_t *major, int64_t *minor) {
 	uint32_t n_ext;
 	vkEnumerateDeviceExtensionProperties(pdev, NULL, &n_ext, NULL);
 	VkExtensionProperties *ext_p = malloc(n_ext*sizeof(*ext_p));
 	vkEnumerateDeviceExtensionProperties(pdev, NULL, &n_ext, ext_p);
 	qsort(ext_p, n_ext, sizeof(VkExtensionProperties), compare_ext_names);
 
-	check_ext(n_ext, ext_p, VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME);
+	if (!check_ext(n_ext, ext_p, VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME)) {
+		errlog("A required extension is missing");
+		return VK_NULL_HANDLE;
+	}
 	*dmabuf = check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
 	*dmabuf &= check_ext(n_ext, ext_p, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME);
@@ -264,6 +247,30 @@ VkDevice create_device(VkInstance inst, VkPhysicalDevice pdev, bool *dmabuf, boo
 		fprintf(stderr, "ERROR: create_device() failed.\n");
 		return VK_NULL_HANDLE;
 	}
+
+	VkPhysicalDeviceDrmPropertiesEXT drm_props = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT,
+	};
+
+	VkPhysicalDeviceProperties2 dev_props = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+		.pNext = &drm_props,
+	};
+	vkGetPhysicalDeviceProperties2(pdev, &dev_props);
+	VkPhysicalDeviceProperties props;
+	vkGetPhysicalDeviceProperties(pdev, &props);
+	boxlog("Device name: %s", props.deviceName);
+	boxlog("       type: %s", type_to_string(props.deviceType));
+	if (drm_props.hasPrimary) {
+		boxlog("    primary: %d:%d", drm_props.primaryMajor, drm_props.primaryMinor);
+		*major = drm_props.primaryMajor;
+		*minor = drm_props.primaryMinor;
+	} else {
+		errlog("failed to get primary device");
+		return VK_NULL_HANDLE;
+	}
+	if (drm_props.hasRender)
+		boxlog("     render: %d:%d", drm_props.renderMajor, drm_props.renderMinor);
 
 	vkGetFenceFd = (PFN_vkGetFenceFdKHR) vkGetDeviceProcAddr(dev,
 	"vkGetFenceFdKHR");
@@ -627,14 +634,14 @@ int vulkan_init(bool *dmabuf, bool *dmabuf_mod, int64_t *major, int64_t *minor) 
 		return -1;
 	}
 
-	physical_device = get_physical_device(instance, major, minor);
+	physical_device = get_physical_device(instance);
 	if (physical_device == VK_NULL_HANDLE) {
 		errlog("get_physical_device failed");
 		return -1;
 	}
 
 	bool dmabuf_dev, dmabuf_mod_dev;
-	device = create_device(instance, physical_device, &dmabuf_dev, &dmabuf_mod_dev);
+	device = create_device(instance, physical_device, &dmabuf_dev, &dmabuf_mod_dev, major, minor);
 	if (device == VK_NULL_HANDLE) {
 		errlog("create_device failed");
 		return -1;
