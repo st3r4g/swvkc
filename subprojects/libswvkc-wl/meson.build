@@ -4,6 +4,10 @@ add_project_arguments('-pedantic-errors', '-Wno-unused-parameter',
                       '-Wno-unused-function', language: 'c')
 add_project_link_arguments('-lm', language: 'c')
 
+if get_option('buildtype').startswith('debug')
+  add_project_arguments('-DDEBUG',language: 'c')
+endif
+
 c = 'core/'
 u = 'util/'
 x = 'extensions/'

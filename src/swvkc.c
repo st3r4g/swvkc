@@ -597,10 +597,34 @@ void input_key_notify(struct aaa *e, void *user_data) {
 				wl_display_terminate(server->display);
 				break;
 			}
+			struct surface_node *match;
+			if( e->key == KEY_TAB) {
+				struct wl_list *current_surface;
+				current_surface = server->mapped_surfaces_list.next;
+				for(uint8_t c=0; c<i+1;c++){
+					if(current_surface->next==&server->mapped_surfaces_list){ //we are in the start of the list
+						current_surface = current_surface->next->next->next;//to start going back
+						//current_surface = current_surface->prev->next;// prev->next is going to the begining of the list
+					} else if(current_surface!=NULL) {
+						current_surface = current_surface->next;
+					} else {
+						break;
+					}
+				}
+				if(server->mapped_surfaces_list.next->prev!=server->mapped_surfaces_list.next->next) {
+				if(current_surface!=&server->mapped_surfaces_list){
+					match = wl_container_of(current_surface, match, link);
+					errlog("match %p", (void*)match);
+					server_change_focus(server, match);
+				}
+				}
+				i++;
+				break;
+			}
 			errlog("the key '%s' was pressed", e->name);
 			name[i] = e->name[0];
 			i++;
-			struct surface_node *match = match_app_id(server, name);
+			match = match_app_id(server, name);
 			errlog("match %p", (void*)match);
 			if (match)
 				server_change_focus(server, match);

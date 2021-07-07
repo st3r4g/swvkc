@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <time.h>
 
+#if defined DEBUG
 void errlog(const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
@@ -27,3 +28,7 @@ void boxlog(const char *fmt, ...) {
 	fprintf(stdout, "\n");
 	va_end(args);
 }
+#else
+void errlog(const char *fmt, ...) {}
+void boxlog(const char *fmt, ...) {}
+#endif
