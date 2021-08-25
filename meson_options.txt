@@ -1,1 +1,2 @@
 option('bufmgr', type: 'combo', choices: ['gbm', 'intel'], value: 'gbm', description: 'Buffer manager implementation')
+option('xyzzy', type: 'boolean', value: 'false', description: 'System compositor (experimental)')

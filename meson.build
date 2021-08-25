@@ -6,6 +6,24 @@ add_project_arguments('-pedantic-errors', '-Wno-unused-parameter',
 wl_proj = subproject('libswvkc-wl')
 wl_dep = wl_proj.get_variable('libswvkc_wl_dep')
 
+if get_option('xyzzy')
+	xyzzy_src = files(['input.c', 'loop.c', 'modeset.c', 'wayland.c', 'xkb.c'])
+
+	cc = meson.get_compiler('c')
+	skalibs = cc.find_library('skarnet')
+
+	xyzzy_dep = [skalibs]
+	xyzzy_dep += dependency('libdrm')
+	xyzzy_dep += dependency('libinput')
+	xyzzy_dep += dependency('libudev')
+	xyzzy_dep += dependency('xkbcommon')
+	xyzzy_dep += wl_proj.get_variable('libswvkc_wl_dep')
+
+	xyzzy_inc = []
+
+	executable('xyzzy', xyzzy_src, dependencies: xyzzy_dep, include_directories: xyzzy_inc, c_args: ['-Wno-error=format=', '-Wno-error=sign-compare', '-Wno-error=unused-variable'])
+endif
+
 src = []
 subdir('src')
 
