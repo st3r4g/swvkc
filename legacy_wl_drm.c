@@ -8,7 +8,7 @@
 
 static PFNEGLBINDWAYLANDDISPLAYWL eglBindWaylandDisplayWL = 0;
 
-void legacy_wl_drm_setup(struct wl_display *D, struct gbm_device *gbm) {
+void legacy_wl_drm_init(struct wl_display *D, struct gbm_device *gbm) {
 	EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_GBM_MESA, gbm,
 	NULL);
 	if (display == EGL_NO_DISPLAY) {

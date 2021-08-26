@@ -7,7 +7,7 @@ wl_proj = subproject('libswvkc-wl')
 wl_dep = wl_proj.get_variable('libswvkc_wl_dep')
 
 if get_option('xyzzy')
-	xyzzy_src = files(['input.c', 'gbm.c', 'loop.c', 'modeset.c', 'wayland.c', 'xkb.c', 'legacy_wl_drm.c'])
+	xyzzy_src = files(['atomic.c', 'input.c', 'gbm.c', 'loop.c', 'modeset.c', 'wayland.c', 'xkb.c', 'legacy_wl_drm.c'])
 
 	cc = meson.get_compiler('c')
 	skalibs = cc.find_library('skarnet')
