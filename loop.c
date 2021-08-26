@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 1
 
 #include "input.h"
+#include "atomic.h"
 #include "modeset.h"
 #include "wayland.h"
 #include "xkb.h"
@@ -18,7 +19,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define FDS 2
+#define FDS 3
 
 static void spawn_client(char **argv) {
 	if (fork() == 0) {
@@ -49,13 +50,19 @@ int main(int argc, char *argv[]) {
 
 	if (argc > 0) spawn_client(argv+1);
 
-	iopause_fd x[FDS] = { { input_get_fd(), IOPAUSE_READ, 0 }, { wayland_get_fd(), IOPAUSE_READ, 0 } };
+	iopause_fd x[FDS] = {
+		{ input_get_fd(), IOPAUSE_READ, 0 },
+		{ wayland_get_fd(), IOPAUSE_READ, 0 },
+		{ modeset_get_fd(), IOPAUSE_READ, 0 },
+	};
+
 	int exit = 0;
 	while (!exit) {
 		wayland_flush();
 		iopause(x, FDS, NULL, NULL);
 		if (x[0].revents & IOPAUSE_READ) exit = handler_input();
 		if (x[1].revents & IOPAUSE_READ) wayland_read();
+		if (x[2].revents & IOPAUSE_READ) drm_read();
 	}
 
 	modeset_cleanup();

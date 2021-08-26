@@ -585,6 +585,8 @@ out_return:
 	return ret;
 }
 
+int modeset_get_fd() { return fd; }
+
 /*
  * A short helper function to compute a changing color value. No need to
  * understand it.
