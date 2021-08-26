@@ -540,6 +540,8 @@ err_destroy:
 
 static int fd;
 
+#include "gbm_.h"
+
 int modeset_init()
 {
 	int ret;
@@ -568,7 +570,7 @@ int modeset_init()
 				iter->conn, errno);
 	}
 
-	ret = 0;
+	gbm_init(fd);
 	return ret;
 
 out_close:

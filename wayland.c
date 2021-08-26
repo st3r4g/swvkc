@@ -13,7 +13,9 @@
 #include <extensions/xdg_shell/xdg_toplevel.h>
 #include <util/util.h>
 
+#include "gbm_.h"
 #include "modeset.h" // WARNING: probably bad design, try to decouple (if possible)
+#include "legacy_wl_drm.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -25,14 +27,15 @@ void wayland_init() {
 	D = wl_display_create();
 	assert(D);
 
-	setenv("XDG_RUNTIME_DIR", "/run", 0);
+	setenv("XDG_RUNTIME_DIR", "/tmp", 0);
 
 	const char *socket = wl_display_add_socket_auto(D);
 	assert(socket);
 
 	setenv("WAYLAND_DISPLAY", socket, 0);
 
-	create_globals(D, 0, NULL);
+	create_globals(D, 1, NULL);
+	legacy_wl_drm_setup(D, gbm_get_device());
 }
 
 void wayland_flush() {
@@ -112,7 +115,16 @@ void surface_contents_update_notify(struct surface *surface, void *user_data) {
 	if (!buffer)
 		return;
 
-	shmbuf(buffer);
+	if (surface->role == ROLE_CURSOR) {
+		// TODO
+		return;
+	}
+
+	if (wl_buffer_is_dmabuf(buffer)) {
+		// TODO
+		printf("dmabuf received\n");
+	} else
+		shmbuf(buffer);
 
 	if (surface->frame) {
 		//uint32_t ms = tv_sec * 1000 + tv_usec / 1000;
