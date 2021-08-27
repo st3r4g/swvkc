@@ -57,11 +57,11 @@ void wayland_read() {
 	// We don't assert its return code because the first time it returns -1...
 }
 
-void wayland_send_key(uint32_t key, uint32_t state) {
-	if (keyboard_g) keyboard_send_key(keyboard_g, key, state);
-	/*keyboard_send_modifiers(data,
-	 e->mods_depressed, e->mods_latched,
-	  e->mods_locked, e->group);*/
+void wayland_send_key_and_mods(uint32_t key, uint32_t state, unsigned int mods_depressed, unsigned int mods_latched, unsigned int mods_locked, unsigned int group) {
+	if (keyboard_g) {
+		keyboard_send_key(keyboard_g, key, state);
+		keyboard_send_modifiers(keyboard_g, mods_depressed, mods_latched, mods_locked, group);
+	}
 }
 
 static void shmbuf(struct wl_resource *buffer) {

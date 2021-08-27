@@ -59,6 +59,7 @@ static struct xkb_context *context;
 static struct xkb_keymap *keymap;
 static int keymap_size;
 static int keymap_fd;
+static struct xkb_state *state;
 
 void xkb_init() {
 	context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
@@ -94,8 +95,26 @@ void xkb_init() {
 	strcpy(ptr, keymap_str);
 	free(keymap_str);
 
-	//state = xkb_state_new(keymap);
+	state = xkb_state_new(keymap);
 }
 
 int32_t xkb_get_keymap_fd() { return keymap_fd; }
 uint32_t xkb_get_keymap_size() { return keymap_size; }
+
+void xkb_update(uint32_t key, int state_) {
+	xkb_keycode_t keycode = key + 8;
+	enum xkb_key_direction direction = state_ ? XKB_KEY_DOWN : XKB_KEY_UP;
+
+	xkb_state_update_key(state, keycode, direction);
+}
+
+void xkb_get_modifiers(unsigned int *mods_depressed, unsigned int *mods_latched, unsigned int *mods_locked, unsigned int *group) {
+	*mods_depressed = xkb_state_serialize_mods(state, XKB_STATE_MODS_DEPRESSED);
+	*mods_latched = xkb_state_serialize_mods(state, XKB_STATE_MODS_LATCHED);
+	*mods_locked = xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED);
+	*group = xkb_state_serialize_layout(state, XKB_STATE_LAYOUT_EFFECTIVE);
+}
+
+int xkb_test_ctrlalt() {
+	return xkb_state_mod_names_are_active(state, XKB_STATE_MODS_EFFECTIVE, XKB_STATE_MATCH_ALL, XKB_MOD_NAME_CTRL, XKB_MOD_NAME_ALT, NULL);
+}
