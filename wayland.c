@@ -37,7 +37,7 @@ void wayland_init() {
 	setenv("WAYLAND_DISPLAY", socket, 0);
 
 	create_globals(D, 1, NULL);
-	legacy_wl_drm_setup(D, gbm_get_device());
+	legacy_wl_drm_init(D, gbm_get_device());
 }
 
 void wayland_flush() {
@@ -77,6 +77,8 @@ static void shmbuf(struct wl_resource *buffer) {
 	wl_buffer_send_release(buffer);
 }
 
+static struct wl_resource *to_release[2];
+
 static void dmabuf(struct wl_resource *dmabuf) {
 	uint32_t width = wl_buffer_dmabuf_get_width(dmabuf);
 	uint32_t height = wl_buffer_dmabuf_get_height(dmabuf);
@@ -89,8 +91,14 @@ static void dmabuf(struct wl_resource *dmabuf) {
 	uint32_t *handle_ptr = wl_buffer_dmabuf_get_subsystem_object(dmabuf,
 	 SUBSYSTEM_DRM);
 
-	atomic_commit(width, height, format, *handle_ptr, strides[0], offsets[0], mods[0]);
-	wl_buffer_send_release(dmabuf);
+	atomic_commit(*handle_ptr);
+
+	if (!to_release[0])
+		to_release[0] = dmabuf;
+	else if (!to_release[1])
+		to_release[1] = dmabuf;
+	else
+		assert(false);
 }
 
 /*
@@ -185,7 +193,7 @@ void buffer_dmabuf_create_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 	assert(handle);
 
 	uint32_t *handle_ptr = malloc(sizeof(*handle_ptr));
-	*handle_ptr = handle;
+	*handle_ptr = modeset_add_fb(width, height, format, handle, strides[0], offsets[0], mods[0]);
 	dmabuf->subsystem_object[SUBSYSTEM_DRM] = handle_ptr;
 }
 
@@ -213,5 +221,13 @@ tv_sec, unsigned int tv_usec, void *user_data) {
 		wl_callback_send_done(surface_g->frame, ms);
 		wl_resource_destroy(surface_g->frame);
 		surface_g->frame = 0;
+	}
+	if (to_release[1]) {
+		wl_buffer_send_release(to_release[1]);
+		to_release[1] = NULL;
+	}
+	if (to_release[0]) {
+		to_release[1] = to_release[0];
+		to_release[0] = NULL;
 	}
 }

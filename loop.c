@@ -45,6 +45,7 @@ static int handler_input() {
 int main(int argc, char *argv[]) {
 	input_init();
 	modeset_init();
+	atomic_init();
 	wayland_init();
 	xkb_init();
 

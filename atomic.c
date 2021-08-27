@@ -2,6 +2,7 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
+#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -111,15 +112,83 @@ struct props find_prop_ids(int fd, uint32_t plane_id, uint32_t conn_id, uint32_t
 	return props;
 }
 
-int atomic_commit(uint32_t width, uint32_t height, uint32_t format, uint32_t handle, uint32_t pitch, uint32_t offset, uint64_t mod) {
+static int crtc_index_from_id(int fd, uint32_t crtc_id) {
+	drmModeRes *res = drmModeGetResources(fd);
+	for (int i=0; i<res->count_crtcs; i++) {
+		if (res->crtcs[i] == crtc_id) {
+			drmModeFreeResources(res);
+			return i;
+		}
+	}
+	drmModeFreeResources(res);
+	return -1;
+}
+
+static uint32_t planes(int fd, uint32_t crtc_id) {
+	int crtc_idx = crtc_index_from_id(fd, crtc_id);
+	int n_overlay = 0, n_cursor = 0;
+	uint32_t plane_id = 0;
+
+	drmModePlaneRes *plane_res = drmModeGetPlaneResources(fd);
+	for (size_t i=0; i<plane_res->count_planes; i++) {
+		drmModePlane *plane = drmModeGetPlane(fd, plane_res->planes[i]);
+		if (!(plane->possible_crtcs & (1 << crtc_idx))) {
+			drmModeFreePlane(plane);
+			continue;
+		}
+		drmModeObjectProperties *obj_props;
+		obj_props = drmModeObjectGetProperties(fd, plane->plane_id,
+		DRM_MODE_OBJECT_PLANE);
+		for (size_t j=0; j<obj_props->count_props; j++) {
+			drmModePropertyRes *prop = drmModeGetProperty(fd,
+			obj_props->props[j]);
+			if (!strcmp(prop->name, "type")) {
+				if (obj_props->prop_values[j] == DRM_PLANE_TYPE_PRIMARY) {
+					printf("primary %d\n", plane->plane_id);
+					plane_id = plane->plane_id;
+				} else if (obj_props->prop_values[j] == DRM_PLANE_TYPE_OVERLAY) {
+					printf("overlay %d\n", plane->plane_id);
+					//S->overlay_plane_id = plane->plane_id;
+					n_overlay++;
+				} else if (obj_props->prop_values[j] == DRM_PLANE_TYPE_CURSOR) {
+					printf("cursor %d\n", plane->plane_id);
+					//S->cursor_plane_id = plane->plane_id;
+					n_cursor++;
+				}
+			}
+			drmModeFreeProperty(prop);
+		}
+		drmModeFreeObjectProperties(obj_props);
+		drmModeFreePlane(plane);
+	}
+	drmModeFreePlaneResources(plane_res);
+	//boxlog("   overlay planes: %d", n_overlay);
+	//boxlog("    cursor planes: %d", n_cursor);
+	return plane_id;
+}
+
+static uint32_t crtc;
+static uint32_t conn;
+static uint32_t plane;
+static struct props props;
+
+void atomic_init() {
 	int r, fd = modeset_get_fd();
 
 	// without this we don't have access to all properties
-	drmSetClientCap(fd, DRM_CLIENT_CAP_ATOMIC, 1);
+	r = drmSetClientCap(fd, DRM_CLIENT_CAP_ATOMIC, 1);
+	assert(!r);
 
-	struct props props = find_prop_ids(fd, 46, 99, 60);
-	printf("this is sixteen %d\n", props.plane.fb_id);
+	crtc = modeset_get_crtc();
+	conn = modeset_get_conn();
+	plane = planes(fd, crtc);
+	assert(plane);
 
+	props = find_prop_ids(fd, plane, conn, crtc);
+}
+
+uint32_t modeset_add_fb(uint32_t width, uint32_t height, uint32_t format, uint32_t handle, uint32_t pitch, uint32_t offset, uint64_t mod) {
+	int r, fd = modeset_get_fd();
 	uint32_t bo_handles[4] = {handle}, pitches[4] = {pitch}, offsets[4] = {offset};
 	uint64_t modifier[4] = {mod};
 	uint32_t buf_id, flags = DRM_MODE_FB_MODIFIERS;
@@ -132,15 +201,19 @@ int atomic_commit(uint32_t width, uint32_t height, uint32_t format, uint32_t han
 	if (r != 0) die("drmModeAddFB2WithModifiers");
 
 	printf("success: %dx%d\n", width, height);
+	return buf_id;
+}
 
-	if (width != 24) {
+void atomic_commit(uint32_t buf_id) {
+	int r, fd = modeset_get_fd();
+//	if (width != 24) {
 		drmModeAtomicReqPtr req = drmModeAtomicAlloc();
 		if (req == NULL) die("drmModeAtomicAlloc");
-		drmModeAtomicAddProperty(req, 46, props.plane.fb_id, buf_id);
+		drmModeAtomicAddProperty(req, plane, props.plane.fb_id, buf_id);
 		r = drmModeAtomicCommit(fd, req, DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, NULL);
 		if (r != 0) die("drmModeAtomicCommit");
 		drmModeAtomicFree(req);
-	}
+//	}
 
 	/*uint64_t old_buf_id = find_old(fd);
 	sleep(1);
@@ -151,8 +224,6 @@ int atomic_commit(uint32_t width, uint32_t height, uint32_t format, uint32_t han
 	r = drmModeAtomicCommit(fd, req, 0, NULL);
 	if (r != 0) die("drmModeAtomicCommit");
 	drmModeAtomicFree(req);*/
-
-	return 0;
 }
 
 #include "wayland.h" // meh
