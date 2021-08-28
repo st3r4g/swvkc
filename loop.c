@@ -7,13 +7,14 @@
 #include "xkb.h"
 
 #include <skalibs/iopause.h>
+#include <skalibs/strerr.h>
 
 #include <linux/input-event-codes.h>
 
 #include <assert.h>
-#include <signal.h>
-
+#include <fcntl.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,6 +51,10 @@ static int handler_input() {
 	return 0;
 }
 
+static void check_3_open() {
+	if (fcntl(3, F_GETFD) < 0) strerr_die1x(1, "readiness notification");
+}
+
 const char *usage = "usage: xyzzy [-k] [client]\n\
 \n\
 Experimental Wayland system compositor\n\
@@ -59,12 +64,16 @@ positional arguments:\n\
 \n\
 optional arguments:\n\
   -h                    show this help message and exit\n\
-  -k                    kill PID 1 on exit (becomes Ctrl+Alt+Del)\n";
+  -k                    kill PID 1 on exit (becomes Ctrl+Alt+Del)\n\
+  -3                    notify readiness on fd 3\n";
 int main(int argc, char *argv[]) {
+	int notif = 0;
+
 	int opt;
-	while ((opt = getopt(argc, argv, "hk")) != -1) {
+	while ((opt = getopt(argc, argv, "hk3")) != -1) {
 		switch (opt) {
 		case 'k': kill1 = 1; break;
+		case '3': check_3_open(); notif = 1; break;
 		default:
 			fprintf(stderr, usage);
 			return EXIT_FAILURE;
@@ -76,6 +85,11 @@ int main(int argc, char *argv[]) {
 	atomic_init();
 	wayland_init();
 	xkb_init();
+
+	if (notif) {
+		write(3, "\n", 1); // ready to accept connections
+		close(3);
+	}
 
 	if (argc > optind) spawn_client(argv+optind);
 
