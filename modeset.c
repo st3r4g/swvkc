@@ -589,6 +589,8 @@ int modeset_get_fd() { return fd; }
 uint32_t modeset_get_crtc() { return modeset_list->crtc; }
 uint32_t modeset_get_conn() { return modeset_list->conn; }
 uint32_t modeset_get_fb() { return modeset_list->fb; }
+uint32_t modeset_get_width() { return modeset_list->width; }
+uint32_t modeset_get_height() { return modeset_list->height; }
 
 /*
  * A short helper function to compute a changing color value. No need to

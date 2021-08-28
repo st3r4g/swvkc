@@ -2,6 +2,8 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
+#include <skalibs/strerr.h>
+
 #include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -202,6 +204,13 @@ uint32_t modeset_add_fb(uint32_t width, uint32_t height, uint32_t format, uint32
 
 	printf("success: %dx%d\n", width, height);
 	return buf_id;
+}
+
+void modeset_rem_fb(uint32_t buf_id) {
+	int r, fd = modeset_get_fd();
+
+	r = drmModeRmFB(fd, buf_id);
+	if (r != 0) strerr_warn1sys("drmModeAddFB2WithModifiers");
 }
 
 void atomic_commit(uint32_t buf_id) {

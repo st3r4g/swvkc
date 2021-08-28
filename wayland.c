@@ -25,6 +25,11 @@ static struct wl_display *D;
 static struct keyboard * keyboard_g;
 static struct surface* surface_g;
 
+struct bufstate {
+	struct gbm_bo *bo;
+	uint32_t fb_id;
+};
+
 void wayland_init() {
 	D = wl_display_create();
 	assert(D);
@@ -80,18 +85,10 @@ static void shmbuf(struct wl_resource *buffer) {
 static struct wl_resource *to_release[2];
 
 static void dmabuf(struct wl_resource *dmabuf) {
-	uint32_t width = wl_buffer_dmabuf_get_width(dmabuf);
-	uint32_t height = wl_buffer_dmabuf_get_height(dmabuf);
-	uint32_t format = wl_buffer_dmabuf_get_format(dmabuf);
-	//uint32_t num_planes = wl_buffer_dmabuf_get_num_planes(dmabuf);
-	uint32_t *strides = wl_buffer_dmabuf_get_strides(dmabuf);
-	uint32_t *offsets = wl_buffer_dmabuf_get_offsets(dmabuf);
-	uint64_t *mods = wl_buffer_dmabuf_get_mods(dmabuf);
-
-	uint32_t *handle_ptr = wl_buffer_dmabuf_get_subsystem_object(dmabuf,
+	struct bufstate *bufstate = wl_buffer_dmabuf_get_subsystem_object(dmabuf,
 	 SUBSYSTEM_DRM);
 
-	atomic_commit(*handle_ptr);
+	atomic_commit(bufstate->fb_id);
 
 	if (!to_release[0])
 		to_release[0] = dmabuf;
@@ -169,8 +166,8 @@ void xdg_toplevel_init_notify(struct xdg_toplevel_data *xdg_toplevel, void
 	*state1 = XDG_TOPLEVEL_STATE_ACTIVATED;
 	int32_t *state2 = wl_array_add(&array, sizeof(int32_t));
 	*state2 = XDG_TOPLEVEL_STATE_MAXIMIZED;
-	xdg_toplevel_send_configure(xdg_toplevel->resource, 1920,
-	1080, &array);
+	xdg_toplevel_send_configure(xdg_toplevel->resource, modeset_get_width(),
+	modeset_get_height(), &array);
 	xdg_surface_send_configure(xdg_toplevel->xdg_surface_data->self, 0);
 }
 
@@ -185,24 +182,23 @@ void buffer_dmabuf_create_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 	uint32_t *offsets = dmabuf->offsets;
 	uint64_t *mods = dmabuf->modifiers;
 
-	//struct fb *fb = wl_buffer_dmabuf_get_subsystem_object(dmabuf_resource,
-	// SUBSYSTEM_DRM);
-
-	uint32_t handle = gbm_import_from_dmabuf(num_planes, fds, width, height, format, strides, offsets, mods[0]);
+	struct gbm_bo *bo = gbm_import_from_dmabuf(num_planes, fds, width, height, format, strides, offsets, mods[0]);
 	// TODO: migrate to drmPrimeFDToHandle (but refcounting issues?)
-	assert(handle);
+	assert(bo);
 
-	uint32_t *handle_ptr = malloc(sizeof(*handle_ptr));
-	*handle_ptr = modeset_add_fb(width, height, format, handle, strides[0], offsets[0], mods[0]);
-	dmabuf->subsystem_object[SUBSYSTEM_DRM] = handle_ptr;
+	struct bufstate *bufstate = malloc(sizeof(*bufstate));
+	bufstate->bo = bo;
+	bufstate->fb_id = modeset_add_fb(width, height, format, gbm_get_handle(bo), strides[0], offsets[0], mods[0]);
+	dmabuf->subsystem_object[SUBSYSTEM_DRM] = bufstate;
 }
 
 void buffer_dmabuf_destroy_notify(struct wl_buffer_dmabuf_data *dmabuf, void
 *user_data) {
-	/*uint32_t *handle_ptr = wl_buffer_dmabuf_get_subsystem_object(dmabuf,
-	 SUBSYSTEM_DRM);
-	free(handle_ptr);*/
-	// TODO clean gbm
+	struct bufstate *bufstate = dmabuf->subsystem_object[SUBSYSTEM_DRM];
+	// TODO: Not sure if we can destroy it immediately
+	modeset_rem_fb(bufstate->fb_id);
+	gbm_destroy(bufstate->bo);
+	free(bufstate);
 }
 
 #include "xkb.h"

@@ -14,9 +14,9 @@ struct gbm_device *gbm_get_device() {
 	return gbm;
 }
 
-uint32_t gbm_import_from_dmabuf(int num_fds, int32_t *dmabuf_fds, uint32_t
-width, uint32_t height, uint32_t format, uint32_t *strides, uint32_t *offsets,
-uint64_t modifier) {
+struct gbm_bo *gbm_import_from_dmabuf(int num_fds, int32_t *dmabuf_fds,
+uint32_t width, uint32_t height, uint32_t format, uint32_t *strides, uint32_t
+*offsets, uint64_t modifier) {
 	struct gbm_import_fd_modifier_data data = {
 		.width = width,
 		.height = height,
@@ -35,8 +35,12 @@ uint64_t modifier) {
 		return 0;
 	}
 
-	return gbm_bo_get_handle(gbm_bo).u32;
+	return gbm_bo;
 }
+
+void gbm_destroy(struct gbm_bo *gbm_bo) { gbm_bo_destroy(gbm_bo); }
+
+uint32_t gbm_get_handle(struct gbm_bo *gbm_bo) { return gbm_bo_get_handle(gbm_bo).u32; }
 
 void gbm_fini() {
 	gbm_device_destroy(gbm);
