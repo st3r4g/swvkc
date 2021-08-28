@@ -44,6 +44,10 @@ static int handler_input() {
 
 		if (xkb_test_ctrlalt() && key == (kill1 ? KEY_DELETE : KEY_BACKSPACE))
 			return 1; // exit
+		if (xkb_test_ctrlalt() && key == KEY_ENTER) {
+			const char* child_argv[] = {"weston-terminal", NULL};
+			spawn_client((char**)child_argv); // emergency terminal
+		}
 
 		wayland_send_key_and_mods(key, state, mods_depressed, mods_latched, mods_locked, group);
 	}
