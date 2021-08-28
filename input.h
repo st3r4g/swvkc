@@ -1,9 +1,9 @@
 #ifndef input_h_INCLUDED
 #define input_h_INCLUDED
 
-#endif // input_h_INCLUDED
+#include <libinput.h>
 
-void input_init();
-int input_get_fd();
-int input_read();
-void input_fini();
+struct libinput *input_init();
+void input_fini(struct libinput *li);
+
+#endif // input_h_INCLUDED

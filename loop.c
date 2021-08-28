@@ -33,26 +33,57 @@ static void spawn_client(char **argv) {
 	}
 }
 
-static int handler_input() {
-	uint32_t key;
-	int state;
-	if (input_read(&key, &state)) {
-		xkb_update(key, state);
+static int handler_key(struct libinput_event *event) {
+	struct libinput_event_keyboard *event_keyboard = 
+	libinput_event_get_keyboard_event(event);
+	assert(event_keyboard);
 
-		unsigned int mods_depressed, mods_latched, mods_locked, group;
-		xkb_get_modifiers(&mods_depressed, &mods_latched, &mods_locked, &group);
+	uint32_t key = libinput_event_keyboard_get_key(event_keyboard);
+	int state = libinput_event_keyboard_get_key_state(event_keyboard); // WARNING
 
-		if (xkb_test_ctrlalt() && key == (kill1 ? KEY_DELETE : KEY_BACKSPACE))
-			return 1; // exit
-		if (xkb_test_ctrlalt() && key == KEY_ENTER) {
-			const char* child_argv[] = {"weston-terminal", NULL};
-			spawn_client((char**)child_argv); // emergency terminal
-		}
+	xkb_update(key, state);
 
-		wayland_send_key_and_mods(key, state, mods_depressed, mods_latched, mods_locked, group);
+	unsigned int mods_depressed, mods_latched, mods_locked, group;
+	xkb_get_modifiers(&mods_depressed, &mods_latched, &mods_locked, &group);
+
+	if (xkb_test_ctrlalt() && key == (kill1 ? KEY_DELETE : KEY_BACKSPACE))
+		return 1; // exit
+	if (xkb_test_ctrlalt() && key == KEY_ENTER) {
+		const char* child_argv[] = {"weston-terminal", NULL};
+		spawn_client((char**)child_argv); // emergency terminal
+		return 0;
 	}
 
+	wayland_send_key_and_mods(key, state, mods_depressed, mods_latched, mods_locked, group);
 	return 0;
+}
+
+static void handler_pointer(struct libinput_event *event) {
+
+}
+
+static int handler_input(struct libinput *li) {
+	int r;
+	r = libinput_dispatch(li);
+	assert(!r);
+
+	int exit = 0;
+
+	struct libinput_event *event;
+	while ((event = libinput_get_event(li))) {
+		switch (libinput_event_get_type(event)) {
+		case LIBINPUT_EVENT_KEYBOARD_KEY:
+			exit = exit || handler_key(event);
+		break;
+		case LIBINPUT_EVENT_POINTER_MOTION:
+			handler_pointer(event);
+		break;
+		default: break;
+		}
+		libinput_event_destroy(event);
+	}
+
+	return exit;
 }
 
 static void check_3_open() {
@@ -84,7 +115,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	input_init();
+	struct libinput *li = input_init();
 	modeset_init();
 	atomic_init();
 	wayland_init();
@@ -98,7 +129,7 @@ int main(int argc, char *argv[]) {
 	if (argc > optind) spawn_client(argv+optind);
 
 	iopause_fd x[FDS] = {
-		{ input_get_fd(), IOPAUSE_READ, 0 },
+		{ libinput_get_fd(li), IOPAUSE_READ, 0 },
 		{ wayland_get_fd(), IOPAUSE_READ, 0 },
 		{ modeset_get_fd(), IOPAUSE_READ, 0 },
 	};
@@ -107,13 +138,13 @@ int main(int argc, char *argv[]) {
 	while (!exit) {
 		wayland_flush();
 		iopause(x, FDS, NULL, NULL);
-		if (x[0].revents & IOPAUSE_READ) exit = handler_input();
+		if (x[0].revents & IOPAUSE_READ) exit = handler_input(li);
 		if (x[1].revents & IOPAUSE_READ) wayland_read();
 		if (x[2].revents & IOPAUSE_READ) drm_read();
 	}
 
 	modeset_cleanup();
-	input_fini();
+	input_fini(li);
 
 	if (kill1) kill(1, SIGINT);
 }
