@@ -83,6 +83,7 @@ int create_file(off_t size) {
 struct input *input_setup(char *kdevpath, char *pdevpath, struct input_events input_events) {
 	printf("├─ INPUT (Linux Input Subsystem)\n");
 	int count, n;
+	char con[4];
 	struct key_dev *key_devs;
 	if (kdevpath) {
 		key_devs = calloc(1, sizeof(struct key_dev));
@@ -98,7 +99,14 @@ struct input *input_setup(char *kdevpath, char *pdevpath, struct input_events in
 			printf("(%d) [%s]\n", i, key_devs[i].devnode);
 		}
 		printf("Choose one: ");
-		scanf("%d", &n);
+		//scanf("%d", &n);
+		fgets(con, 3, stdin);
+		char *p;
+		n = strtol(con, &p, 10);
+		if(p == con || n<0 || n >= count ) {
+			printf("Invalid input\n");
+			return 0;
+		}
 	} else {
 		// Handle count == 0
 		n = 0;
